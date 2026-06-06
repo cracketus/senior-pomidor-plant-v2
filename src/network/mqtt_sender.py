@@ -1,0 +1,48 @@
+"""MQTT telemetry sender using paho-mqtt v2."""
+
+from __future__ import annotations
+
+import json
+import logging
+import ssl
+from typing import Any, Callable
+
+from src.config import Settings, mqtt_topic
+
+
+class MqttSender:
+    def __init__(
+        self,
+        settings: Settings,
+        logger: logging.Logger | None = None,
+        client_factory: Callable[[], Any] | None = None,
+    ) -> None:
+        self.settings = settings
+        self.logger = logger or logging.getLogger(__name__)
+        self.client_factory = client_factory
+
+    def publish(self, payload: dict[str, Any]) -> bool:
+        topic = mqtt_topic(self.settings)
+        body = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+
+        try:
+            client = self.client_factory() if self.client_factory else self._create_client()
+            if self.settings.mqtt_username:
+                client.username_pw_set(self.settings.mqtt_username, self.settings.mqtt_password)
+            if self.settings.mqtt_tls:
+                client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
+            client.connect(self.settings.mqtt_host, self.settings.mqtt_port, keepalive=30)
+            info = client.publish(topic, body, qos=1, retain=False)
+            if hasattr(info, "wait_for_publish"):
+                info.wait_for_publish(timeout=10)
+            client.disconnect()
+            self.logger.info("MQTT telemetry published to %s", topic)
+            return True
+        except Exception as exc:  # noqa: BLE001 - transport isolation boundary
+            self.logger.error("MQTT telemetry failed: %s", exc)
+            return False
+
+    def _create_client(self) -> Any:
+        import paho.mqtt.client as mqtt
+
+        return mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)

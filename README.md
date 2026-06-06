@@ -1,2 +1,230 @@
-# senior-pomidor-plant-v2
-Edge node for the Senior Pomidor. A Dockerized Python application for Raspberry Pi to collect telemetry from I2C/1-Wire agricultural sensors and stream it to a central AI server.
+# Senior Pomidor: Edge Node
+
+Python edge-node software for balcony plant monitoring. The same application runs on Linux and Windows in mock mode; real sensor hardware mode is supported on Linux/Raspberry Pi.
+
+This repository contains only the balcony hardware and telemetry collection layer. The Core AI server, database, and LLM/VLM processing live in a separate repository.
+
+## Overview
+
+The Edge Node reads soil, air, light, and leaf-temperature sensors, formats the readings into a Senior Pomidor telemetry payload, stores a local copy on the edge node, and publishes the payload to the Core server over MQTT. HTTP is included as an optional fallback transport.
+
+The application is designed around three constraints:
+
+- Sensor failures must not stop the main loop.
+- Configuration belongs in environment variables, not hardcoded source.
+- Development and tests must run without Raspberry Pi hardware by enabling mock sensors.
+
+## Platform Modes
+
+| Platform | Supported mode | Notes |
+| --- | --- | --- |
+| Windows | Mock sensors | Use `MOCK_SENSORS=true`. Real I2C, SMBus, and 1-Wire sensor access is not supported natively. |
+| Linux desktop/server | Mock sensors | Useful for development and integration tests. |
+| Raspberry Pi Linux | Mock or real sensors | Use `MOCK_SENSORS=false` for real hardware. |
+| Docker on Windows/Linux | Mock sensors | Use `docker-compose.mock.yml`; no host hardware passthrough is required. |
+| Docker on Raspberry Pi Linux | Real sensors | Use `docker-compose.yml`; it passes through `/dev/i2c-1` and `/sys/bus/w1`. |
+
+If `MOCK_SENSORS` is omitted, the app defaults to mock mode on non-Linux platforms and real sensor mode on Linux. Setting `MOCK_SENSORS=false` on Windows is rejected at startup with a configuration error.
+
+## Hardware
+
+| Sensor | Protocol | Address / Pin | Measurement |
+| --- | --- | --- | --- |
+| ADS1115 | I2C | `0x48`, channels `A0`, `A1` | Capacitive soil moisture voltage, calibrated to percent |
+| BME280 x2 | I2C | `0x76`, `0x77` | Air temperature, humidity, pressure |
+| BH1750 | I2C | `0x23` | Illuminance in lux |
+| MLX90615 | I2C / SMBus | `0x5A` | Non-contact leaf temperature |
+| DS18B20 x2 | 1-Wire | ROM IDs from `.env` | Soil temperature |
+
+## Project Structure
+
+```text
+.
+|-- docker-compose.yml
+|-- docker-compose.mock.yml
+|-- Dockerfile
+|-- requirements.txt
+|-- requirements-hardware.txt
+|-- scripts/
+|-- .env.example
+|-- data/
+|-- src/
+|   |-- main.py
+|   |-- config.py
+|   |-- sensors/
+|   |-- network/
+|   `-- utils/
+`-- tests/
+```
+
+## Configuration
+
+Copy `.env.example` to `.env` and adjust values for the target environment.
+
+Important variables:
+
+- `DEVICE_ID`: stable edge-node identifier.
+- `POLL_INTERVAL_SECONDS`: delay between telemetry ticks.
+- `MOCK_SENSORS`: `true` for mock mode, `false` for Raspberry Pi hardware mode.
+- `MQTT_HOST`, `MQTT_PORT`, `MQTT_TOPIC_PREFIX`: primary delivery settings.
+- `HTTP_ENABLED`, `CORE_HTTP_URL`: optional fallback sender settings.
+- `LOCAL_STORAGE_DIR`: directory where local telemetry JSON files are stored.
+- `LOCAL_STORAGE_MAX_AGE_DAYS`: maximum age of local telemetry files before cleanup.
+- `LOCAL_STORAGE_MAX_SIZE_MB`: maximum disk space used by local telemetry files.
+- `ADS1115_*_DRY_VOLTAGE` and `ADS1115_*_WET_VOLTAGE`: soil moisture calibration values.
+
+MQTT publishes one JSON payload per tick to:
+
+```text
+{MQTT_TOPIC_PREFIX}/{DEVICE_ID}/telemetry
+```
+
+## Payload Shape
+
+Telemetry payloads use schema version `senior-pomidor.edge.telemetry.v1`:
+
+```json
+{
+  "schema_version": "senior-pomidor.edge.telemetry.v1",
+  "device_id": "balcony-edge-01",
+  "timestamp_utc": "2026-06-06T10:00:00Z",
+  "pods": {
+    "pod_1": {
+      "metrics": {
+        "soil_moisture_percent": 45.0,
+        "soil_temperature_c": 22.4,
+        "air_temperature_c": 24.5,
+        "air_humidity_percent": 58.2,
+        "air_pressure_hpa": 1008.3,
+        "light_lux": 18000.0,
+        "leaf_temperature_c": 25.1
+      },
+      "errors": []
+    }
+  }
+}
+```
+
+Sensor errors are reported in each pod's `errors` array so partial telemetry can still be delivered.
+
+## Local Storage
+
+Every telemetry payload is saved locally before network delivery. By default, Docker stores files on the Raspberry Pi host at:
+
+```text
+./data/telemetry
+```
+
+Retention is controlled by:
+
+```env
+LOCAL_STORAGE_DIR=data/telemetry
+LOCAL_STORAGE_MAX_AGE_DAYS=30
+LOCAL_STORAGE_MAX_SIZE_MB=256
+```
+
+Cleanup runs after each saved payload. Files older than the configured age are removed first; if the directory still exceeds the configured size, the oldest remaining files are removed until the directory is below the limit.
+
+## Local Development
+
+Install common, cross-platform dependencies on Windows or Linux:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+Linux shell equivalent:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Run tests:
+
+```bash
+pytest -q
+```
+
+Run a single mock telemetry tick on Windows PowerShell:
+
+```powershell
+$env:MQTT_HOST = "localhost"
+$env:MOCK_SENSORS = "true"
+$env:MAX_TICKS = "1"
+python -m src.main
+```
+
+Run a single mock telemetry tick on Linux:
+
+```bash
+MQTT_HOST=localhost MOCK_SENSORS=true MAX_TICKS=1 python -m src.main
+```
+
+## Raspberry Pi Hardware Setup
+
+The Raspberry Pi setup can be automated from the repository root:
+
+```bash
+chmod +x scripts/setup_raspberry_pi.sh
+./scripts/setup_raspberry_pi.sh --hardware
+```
+
+The script installs host packages, installs Docker if needed, enables I2C and 1-Wire, creates `.env` from `.env.example`, sets `MOCK_SENSORS=false`, builds the image, and starts the hardware container.
+
+If the script enables I2C or 1-Wire, it will stop and ask for a reboot. Reboot and run the same command again:
+
+```bash
+sudo reboot
+cd ~/apps/senior-pomidor-plant-v2
+./scripts/setup_raspberry_pi.sh --hardware
+```
+
+For a fully unattended first pass, allow automatic reboot:
+
+```bash
+./scripts/setup_raspberry_pi.sh --hardware --auto-reboot
+```
+
+You can also preseed the most important `.env` values in the same command:
+
+```bash
+./scripts/setup_raspberry_pi.sh \
+  --hardware \
+  --mqtt-host 192.168.1.10 \
+  --device-id balcony-edge-01 \
+  --pod1-rom 28-000000000001 \
+  --pod2-rom 28-000000000002 \
+  --interval 60 \
+  --auto-reboot
+```
+
+Mock mode on Raspberry Pi uses the same setup script without hardware passthrough:
+
+```bash
+./scripts/setup_raspberry_pi.sh --mock
+```
+
+Review `.env` after the first run and set the real MQTT server address, DS18B20 ROM IDs, and calibration values before relying on real telemetry.
+
+## Docker
+
+Cross-platform mock container:
+
+```bash
+docker compose -f docker-compose.mock.yml up --build
+```
+
+The mock compose file installs only `requirements.txt`, so it does not need Raspberry Pi sensor libraries.
+
+Raspberry Pi hardware container:
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+```
+
+The hardware compose file can be parsed without `.env`, but the app still requires real MQTT and sensor configuration at runtime. It installs `requirements-hardware.txt`, persists telemetry to `./data`, and is Linux/Raspberry Pi specific because it passes through I2C and 1-Wire host paths.
