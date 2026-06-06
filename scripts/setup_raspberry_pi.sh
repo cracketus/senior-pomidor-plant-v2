@@ -10,6 +10,7 @@ MQTT_HOST_VALUE=""
 POD1_ROM_VALUE=""
 POD2_ROM_VALUE=""
 POLL_INTERVAL_VALUE=""
+POD2_ENABLED_VALUE=""
 
 usage() {
   cat <<'EOF'
@@ -22,6 +23,7 @@ Options:
   --mqtt-host IP  Set MQTT_HOST in .env.
   --pod1-rom ID   Set DS18B20_POD1_ROM in .env.
   --pod2-rom ID   Set DS18B20_POD2_ROM in .env.
+  --pod2-disabled Set POD2_ENABLED=false in .env.
   --interval SEC  Set POLL_INTERVAL_SECONDS in .env.
   --auto-reboot   Reboot automatically if I2C or 1-Wire was enabled during this run.
   --skip-start    Prepare the host and .env, but do not start the container.
@@ -69,6 +71,9 @@ while [ "$#" -gt 0 ]; do
       shift
       [ "$#" -gt 0 ] || die "--pod2-rom requires a value"
       POD2_ROM_VALUE="$1"
+      ;;
+    --pod2-disabled)
+      POD2_ENABLED_VALUE="false"
       ;;
     --interval)
       shift
@@ -188,6 +193,7 @@ prepare_env_file() {
   [ -z "$MQTT_HOST_VALUE" ] || set_env_value "MQTT_HOST" "$MQTT_HOST_VALUE"
   [ -z "$POD1_ROM_VALUE" ] || set_env_value "DS18B20_POD1_ROM" "$POD1_ROM_VALUE"
   [ -z "$POD2_ROM_VALUE" ] || set_env_value "DS18B20_POD2_ROM" "$POD2_ROM_VALUE"
+  [ -z "$POD2_ENABLED_VALUE" ] || set_env_value "POD2_ENABLED" "$POD2_ENABLED_VALUE"
   [ -z "$POLL_INTERVAL_VALUE" ] || set_env_value "POLL_INTERVAL_SECONDS" "$POLL_INTERVAL_VALUE"
 }
 
