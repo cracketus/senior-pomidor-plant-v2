@@ -22,6 +22,8 @@ class Settings:
     device_id: str
     poll_interval_seconds: int
     mock_sensors: bool
+    pod1_enabled: bool
+    pod2_enabled: bool
     mqtt_host: str
     mqtt_port: int
     mqtt_username: str | None
@@ -41,10 +43,10 @@ class Settings:
     mlx90615_address: int
     ads1115_pod1_channel: str
     ads1115_pod2_channel: str
-    ads1115_pod1_dry_voltage: float
-    ads1115_pod1_wet_voltage: float
-    ads1115_pod2_dry_voltage: float
-    ads1115_pod2_wet_voltage: float
+    ads1115_pod1_dry_reading: float
+    ads1115_pod1_wet_reading: float
+    ads1115_pod2_dry_reading: float
+    ads1115_pod2_wet_reading: float
     ds18b20_pod1_rom: str | None
     ds18b20_pod2_rom: str | None
     max_ticks: int | None
@@ -69,6 +71,8 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
         device_id=_string(env, "DEVICE_ID", "balcony-edge-01"),
         poll_interval_seconds=_int(env, "POLL_INTERVAL_SECONDS", 60, minimum=1),
         mock_sensors=mock_sensors,
+        pod1_enabled=_bool(env, "POD1_ENABLED", True),
+        pod2_enabled=_bool(env, "POD2_ENABLED", True),
         mqtt_host=mqtt_host,
         mqtt_port=_int(env, "MQTT_PORT", 1883, minimum=1),
         mqtt_username=_optional(env, "MQTT_USERNAME"),
@@ -88,17 +92,19 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
         mlx90615_address=_int(env, "MLX90615_ADDRESS", 0x5A, minimum=0),
         ads1115_pod1_channel=_channel(env, "ADS1115_POD1_CHANNEL", "A0"),
         ads1115_pod2_channel=_channel(env, "ADS1115_POD2_CHANNEL", "A1"),
-        ads1115_pod1_dry_voltage=_float(env, "ADS1115_POD1_DRY_VOLTAGE", 3.0),
-        ads1115_pod1_wet_voltage=_float(env, "ADS1115_POD1_WET_VOLTAGE", 1.2),
-        ads1115_pod2_dry_voltage=_float(env, "ADS1115_POD2_DRY_VOLTAGE", 3.0),
-        ads1115_pod2_wet_voltage=_float(env, "ADS1115_POD2_WET_VOLTAGE", 1.2),
+        ads1115_pod1_dry_reading=_float_alias(env, "ADS1115_POD1_DRY_READING", "ADS1115_POD1_DRY_VOLTAGE", 17736.0),
+        ads1115_pod1_wet_reading=_float_alias(env, "ADS1115_POD1_WET_READING", "ADS1115_POD1_WET_VOLTAGE", 7220.0),
+        ads1115_pod2_dry_reading=_float_alias(env, "ADS1115_POD2_DRY_READING", "ADS1115_POD2_DRY_VOLTAGE", 17776.0),
+        ads1115_pod2_wet_reading=_float_alias(env, "ADS1115_POD2_WET_READING", "ADS1115_POD2_WET_VOLTAGE", 7220.0),
         ds18b20_pod1_rom=_optional(env, "DS18B20_POD1_ROM"),
         ds18b20_pod2_rom=_optional(env, "DS18B20_POD2_ROM"),
         max_ticks=_optional_int(env, "MAX_TICKS", minimum=1),
     )
 
-    _validate_calibration("ADS1115_POD1", settings.ads1115_pod1_dry_voltage, settings.ads1115_pod1_wet_voltage)
-    _validate_calibration("ADS1115_POD2", settings.ads1115_pod2_dry_voltage, settings.ads1115_pod2_wet_voltage)
+    if not settings.pod1_enabled and not settings.pod2_enabled:
+        raise ConfigError("At least one pod must be enabled")
+    _validate_calibration("ADS1115_POD1", settings.ads1115_pod1_dry_reading, settings.ads1115_pod1_wet_reading)
+    _validate_calibration("ADS1115_POD2", settings.ads1115_pod2_dry_reading, settings.ads1115_pod2_wet_reading)
     return settings
 
 
@@ -165,6 +171,12 @@ def _float(env: Mapping[str, str], key: str, default: float, minimum: float | No
     return value
 
 
+def _float_alias(env: Mapping[str, str], key: str, legacy_key: str, default: float) -> float:
+    if _optional(env, key) is not None:
+        return _float(env, key, default)
+    return _float(env, legacy_key, default)
+
+
 def _channel(env: Mapping[str, str], key: str, default: str) -> str:
     value = _string(env, key, default).upper()
     if value not in {"A0", "A1", "A2", "A3"}:
@@ -172,9 +184,9 @@ def _channel(env: Mapping[str, str], key: str, default: str) -> str:
     return value
 
 
-def _validate_calibration(prefix: str, dry_voltage: float, wet_voltage: float) -> None:
-    if dry_voltage == wet_voltage:
-        raise ConfigError(f"{prefix} dry and wet calibration voltages must differ")
+def _validate_calibration(prefix: str, dry_reading: float, wet_reading: float) -> None:
+    if dry_reading == wet_reading:
+        raise ConfigError(f"{prefix} dry and wet calibration readings must differ")
 
 
 def _default_mock_sensors(platform_name: str) -> bool:

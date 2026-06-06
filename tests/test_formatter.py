@@ -21,7 +21,19 @@ def test_formatter_preserves_partial_readings_and_errors() -> None:
 
     assert payload["schema_version"] == SCHEMA_VERSION
     assert payload["timestamp_utc"] == "2026-06-06T10:00:00Z"
+    assert payload["pods"]["pod_1"]["enabled"] is True
     assert payload["pods"]["pod_1"]["metrics"]["soil_moisture_percent"] == 45.2
     assert payload["pods"]["pod_1"]["metrics"]["light_lux"] == 12000.0
     assert payload["pods"]["pod_1"]["errors"] == [{"sensor": "bme280", "message": "timeout"}]
     assert payload["pods"]["pod_2"]["metrics"]["light_lux"] == 12000.0
+
+
+def test_formatter_marks_disabled_pod() -> None:
+    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
+    payload = format_payload(
+        settings,
+        {"pod_1": {}, "pod_2": None, "shared": {"light": {"light_lux": 12000.0}}},
+        timestamp=datetime(2026, 6, 6, 10, 0, tzinfo=UTC),
+    )
+
+    assert payload["pods"]["pod_2"] == {"enabled": False, "metrics": {}, "errors": []}

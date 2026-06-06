@@ -29,7 +29,10 @@ def format_payload(
     }
 
 
-def _format_pod(pod_readings: dict[str, Any], shared_readings: dict[str, Any]) -> dict[str, Any]:
+def _format_pod(pod_readings: dict[str, Any] | None, shared_readings: dict[str, Any]) -> dict[str, Any]:
+    if pod_readings is None:
+        return {"enabled": False, "metrics": {}, "errors": []}
+
     metrics: dict[str, float] = {}
     errors: list[dict[str, str]] = []
 
@@ -38,7 +41,7 @@ def _format_pod(pod_readings: dict[str, Any], shared_readings: dict[str, Any]) -
     for reading in shared_readings.values():
         _merge_reading(reading, metrics, errors)
 
-    return {"metrics": metrics, "errors": errors}
+    return {"enabled": True, "metrics": metrics, "errors": errors}
 
 
 def _merge_reading(reading: Any, metrics: dict[str, float], errors: list[dict[str, str]]) -> None:

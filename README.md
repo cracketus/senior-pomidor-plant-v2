@@ -30,7 +30,7 @@ If `MOCK_SENSORS` is omitted, the app defaults to mock mode on non-Linux platfor
 
 | Sensor | Protocol | Address / Pin | Measurement |
 | --- | --- | --- | --- |
-| ADS1115 | I2C | `0x48`, channels `A0`, `A1` | Capacitive soil moisture voltage, calibrated to percent |
+| ADS1115 | I2C | `0x48`, channels `A0`, `A1` | Capacitive soil moisture raw ADC reading, calibrated to percent |
 | BME280 x2 | I2C | `0x76`, `0x77` | Air temperature, humidity, pressure |
 | BH1750 | I2C | `0x23` | Illuminance in lux |
 | MLX90615 | I2C / SMBus | `0x5A` | Non-contact leaf temperature |
@@ -66,12 +66,13 @@ Important variables:
 - `DEVICE_ID`: stable edge-node identifier.
 - `POLL_INTERVAL_SECONDS`: delay between telemetry ticks.
 - `MOCK_SENSORS`: `true` for mock mode, `false` for Raspberry Pi hardware mode.
+- `POD1_ENABLED`, `POD2_ENABLED`: set a pod to `false` when it is not physically connected.
 - `MQTT_HOST`, `MQTT_PORT`, `MQTT_TOPIC_PREFIX`: primary delivery settings.
 - `HTTP_ENABLED`, `CORE_HTTP_URL`: optional fallback sender settings.
 - `LOCAL_STORAGE_DIR`: directory where local telemetry JSON files are stored.
 - `LOCAL_STORAGE_MAX_AGE_DAYS`: maximum age of local telemetry files before cleanup.
 - `LOCAL_STORAGE_MAX_SIZE_MB`: maximum disk space used by local telemetry files.
-- `ADS1115_*_DRY_VOLTAGE` and `ADS1115_*_WET_VOLTAGE`: soil moisture calibration values.
+- `ADS1115_*_DRY_READING` and `ADS1115_*_WET_READING`: raw ADS1115 soil moisture calibration values from `AnalogIn.value`.
 
 MQTT publishes one JSON payload per tick to:
 
@@ -91,6 +92,7 @@ Telemetry payloads use schema version `senior-pomidor.edge.telemetry.v1`:
   "pods": {
     "pod_1": {
       "metrics": {
+        "adc_raw": 12450.0,
         "soil_moisture_percent": 45.0,
         "soil_temperature_c": 22.4,
         "air_temperature_c": 24.5,
@@ -106,6 +108,28 @@ Telemetry payloads use schema version `senior-pomidor.edge.telemetry.v1`:
 ```
 
 Sensor errors are reported in each pod's `errors` array so partial telemetry can still be delivered.
+
+If Pod 2 is not connected yet, set this in `.env`:
+
+```env
+POD2_ENABLED=false
+```
+
+The main loop will skip all Pod 2 sensors. The payload will still include `pods.pod_2`, but it will be marked as disabled with empty metrics and errors:
+
+```json
+{
+  "enabled": false,
+  "metrics": {},
+  "errors": []
+}
+```
+
+The Raspberry Pi setup script can set this for you:
+
+```bash
+./scripts/setup_raspberry_pi.sh --hardware --mqtt-host 192.168.1.10 --pod2-disabled
+```
 
 ## Local Storage
 

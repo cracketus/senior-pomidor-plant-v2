@@ -44,6 +44,43 @@ def test_config_parses_local_storage_settings() -> None:
     assert settings.local_storage_max_size_mb == 128
 
 
+def test_config_parses_raw_ads1115_readings_and_pod_flags() -> None:
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "POD2_ENABLED": "false",
+            "ADS1115_POD1_DRY_READING": "17736",
+            "ADS1115_POD1_WET_READING": "7220",
+            "ADS1115_POD2_DRY_READING": "17776",
+            "ADS1115_POD2_WET_READING": "7220",
+        }
+    )
+
+    assert settings.pod2_enabled is False
+    assert settings.ads1115_pod1_dry_reading == 17736
+    assert settings.ads1115_pod1_wet_reading == 7220
+    assert settings.ads1115_pod2_dry_reading == 17776
+    assert settings.ads1115_pod2_wet_reading == 7220
+
+
+def test_config_keeps_legacy_ads1115_voltage_env_names_as_aliases() -> None:
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "ADS1115_POD1_DRY_VOLTAGE": "17736",
+            "ADS1115_POD1_WET_VOLTAGE": "7220",
+        }
+    )
+
+    assert settings.ads1115_pod1_dry_reading == 17736
+    assert settings.ads1115_pod1_wet_reading == 7220
+
+
+def test_config_rejects_all_pods_disabled() -> None:
+    with pytest.raises(ConfigError, match="At least one pod"):
+        load_config({"MQTT_HOST": "core.local", "POD1_ENABLED": "false", "POD2_ENABLED": "false"})
+
+
 def test_mock_sensors_default_to_true_on_windows() -> None:
     settings = load_config({"MQTT_HOST": "core.local"}, platform_name="Windows")
 
