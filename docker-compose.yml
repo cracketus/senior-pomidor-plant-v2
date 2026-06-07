@@ -13,6 +13,7 @@ services:
       - /dev/i2c-1:/dev/i2c-1
     volumes:
       - ./data:/app/data
+      - /run/udev:/run/udev:ro
       - /sys/bus/w1:/sys/bus/w1:ro
       - /sys/devices:/sys/devices:ro
     privileged: true
