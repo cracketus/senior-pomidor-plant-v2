@@ -99,7 +99,8 @@ Telemetry payloads use schema version `senior-pomidor.edge.telemetry.v1`:
         "air_humidity_percent": 58.2,
         "air_pressure_hpa": 1008.3,
         "light_lux": 18000.0,
-        "leaf_temperature_c": 25.1
+        "ir_ambient_temp_c": 24.8,
+        "leaf_temp_c": 25.1
       },
       "errors": []
     }
@@ -251,4 +252,4 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-The hardware compose file can be parsed without `.env`, but the app still requires real MQTT and sensor configuration at runtime. It installs `requirements-hardware.txt`, persists telemetry to `./data`, and is Linux/Raspberry Pi specific because it passes through I2C and 1-Wire host paths.
+The hardware compose file can be parsed without `.env`, but the app still requires real MQTT and sensor configuration at runtime. It installs `requirements-hardware.txt`, including `rpi-lgpio` for the `RPi.GPIO` compatibility module on Raspberry Pi OS Bookworm, persists telemetry to `./data`, and is Linux/Raspberry Pi specific because it passes through I2C and 1-Wire host paths.

@@ -19,5 +19,10 @@ def read(rom_id: str | None, mock: bool = False, pod_index: int = 1) -> dict[str
 def _read_hardware(rom_id: str) -> dict[str, float]:
     from w1thermsensor import Sensor, W1ThermSensor
 
-    sensor = W1ThermSensor(sensor_type=Sensor.DS18B20, sensor_id=rom_id)
+    sensor = W1ThermSensor(sensor_type=Sensor.DS18B20, sensor_id=_sensor_id(rom_id))
     return {"soil_temperature_c": round_metric(sensor.get_temperature())}
+
+
+def _sensor_id(rom_id: str) -> str:
+    """Return the hardware id format expected by w1thermsensor."""
+    return rom_id.removeprefix("28-")

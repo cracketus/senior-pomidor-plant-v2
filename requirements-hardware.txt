@@ -3,5 +3,7 @@ adafruit-blinka==9.1.0
 adafruit-circuitpython-ads1x15==3.0.4
 adafruit-circuitpython-bh1750==1.1.19
 adafruit-circuitpython-bme280==2.6.32
+adafruit-circuitpython-mlx90614
+rpi-lgpio==0.6
 smbus2==0.6.1
 w1thermsensor==2.3.0
