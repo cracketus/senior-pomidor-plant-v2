@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Callable
 
 from src.config import ConfigError, Settings, load_config
 from src.network.http_sender import HttpSender
 from src.network.mqtt_sender import MqttSender
+from src.network.photo_sender import HttpPhotoSender
 from src.sensors import adc_ads1115, air_bme280, ir_mlx90615, light_bh1750, temp_ds18b20
 from src.utils.formatter import format_payload
+from src.utils.camera import capture_photo
 from src.utils.local_storage import save_payload
 from src.utils.logger import configure_logger
 
@@ -61,10 +63,19 @@ def _collect_pod_readings(settings: Settings, pod_index: int) -> dict[str, Any]:
     }
 
 
-def run(settings: Settings) -> None:
+def run(
+    settings: Settings,
+    *,
+    camera_capture: Callable[..., Any] = capture_photo,
+    photo_sender: HttpPhotoSender | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> None:
     logger = configure_logger()
     mqtt_sender = MqttSender(settings, logger=logger)
     http_sender = HttpSender(settings, logger=logger)
+    photo_sender = photo_sender or HttpPhotoSender(settings, logger=logger)
+    next_camera_at = 0.0
     tick = 0
 
     logger.info("Starting Senior Pomidor edge node device_id=%s mock_sensors=%s", settings.device_id, settings.mock_sensors)
@@ -77,10 +88,24 @@ def run(settings: Settings) -> None:
         if not delivered and settings.http_enabled:
             http_sender.send(payload)
 
+        if settings.camera_enabled:
+            now = monotonic()
+            if now >= next_camera_at:
+                try:
+                    camera_capture(settings, logger=logger)
+                except Exception as exc:  # noqa: BLE001 - camera isolation boundary
+                    logger.error("Camera capture failed unexpectedly: %s", exc)
+                if settings.photo_upload_enabled:
+                    try:
+                        photo_sender.send_pending()
+                    except Exception as exc:  # noqa: BLE001 - transport isolation boundary
+                        logger.error("Photo upload failed unexpectedly: %s", exc)
+                next_camera_at = now + settings.camera_interval_seconds
+
         if settings.max_ticks is not None and tick >= settings.max_ticks:
             logger.info("Stopping after MAX_TICKS=%s", settings.max_ticks)
             return
-        time.sleep(settings.poll_interval_seconds)
+        sleep(settings.poll_interval_seconds)
 
 
 def main() -> int:

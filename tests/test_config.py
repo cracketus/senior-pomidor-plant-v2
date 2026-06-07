@@ -44,6 +44,63 @@ def test_config_parses_local_storage_settings() -> None:
     assert settings.local_storage_max_size_mb == 128
 
 
+def test_config_parses_camera_defaults() -> None:
+    settings = load_config({"MQTT_HOST": "core.local"})
+
+    assert settings.camera_enabled is False
+    assert settings.camera_interval_seconds == 3600
+    assert settings.camera_storage_dir == "data/photos"
+    assert settings.camera_jpeg_quality == 95
+    assert settings.camera_capture_timeout_ms == 2000
+    assert settings.camera_process_timeout_seconds == 20.0
+    assert settings.camera_max_attempts == 3
+    assert settings.camera_min_sharpness == 6.0
+    assert settings.photo_upload_enabled is False
+    assert settings.photo_upload_url is None
+    assert settings.photo_upload_token is None
+
+
+def test_config_parses_camera_settings() -> None:
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "CAMERA_ENABLED": "true",
+            "CAMERA_INTERVAL_SECONDS": "120",
+            "CAMERA_STORAGE_DIR": "/var/lib/senior-pomidor/photos",
+            "CAMERA_JPEG_QUALITY": "90",
+            "CAMERA_CAPTURE_TIMEOUT_MS": "3000",
+            "CAMERA_PROCESS_TIMEOUT_SECONDS": "30",
+            "CAMERA_MAX_ATTEMPTS": "5",
+            "CAMERA_MIN_SHARPNESS": "8.5",
+            "PHOTO_UPLOAD_ENABLED": "true",
+            "PHOTO_UPLOAD_URL": "https://core.example/photos",
+            "PHOTO_UPLOAD_TOKEN": "secret",
+        }
+    )
+
+    assert settings.camera_enabled is True
+    assert settings.camera_interval_seconds == 120
+    assert settings.camera_storage_dir == "/var/lib/senior-pomidor/photos"
+    assert settings.camera_jpeg_quality == 90
+    assert settings.camera_capture_timeout_ms == 3000
+    assert settings.camera_process_timeout_seconds == 30.0
+    assert settings.camera_max_attempts == 5
+    assert settings.camera_min_sharpness == 8.5
+    assert settings.photo_upload_enabled is True
+    assert settings.photo_upload_url == "https://core.example/photos"
+    assert settings.photo_upload_token == "secret"
+
+
+def test_photo_upload_url_required_when_upload_enabled() -> None:
+    with pytest.raises(ConfigError, match="PHOTO_UPLOAD_URL"):
+        load_config({"MQTT_HOST": "core.local", "PHOTO_UPLOAD_ENABLED": "true"})
+
+
+def test_config_rejects_invalid_camera_quality() -> None:
+    with pytest.raises(ConfigError, match="CAMERA_JPEG_QUALITY"):
+        load_config({"MQTT_HOST": "core.local", "CAMERA_JPEG_QUALITY": "101"})
+
+
 def test_config_parses_raw_ads1115_readings_and_pod_flags() -> None:
     settings = load_config(
         {

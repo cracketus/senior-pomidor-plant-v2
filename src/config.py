@@ -36,6 +36,17 @@ class Settings:
     local_storage_dir: str
     local_storage_max_age_days: int
     local_storage_max_size_mb: int
+    camera_enabled: bool
+    camera_interval_seconds: int
+    camera_storage_dir: str
+    camera_jpeg_quality: int
+    camera_capture_timeout_ms: int
+    camera_process_timeout_seconds: float
+    camera_max_attempts: int
+    camera_min_sharpness: float
+    photo_upload_enabled: bool
+    photo_upload_url: str | None
+    photo_upload_token: str | None
     ads1115_address: int
     bme280_pod1_address: int
     bme280_pod2_address: int
@@ -64,6 +75,10 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
     core_http_url = _optional(env, "CORE_HTTP_URL")
     if http_enabled and not core_http_url:
         raise ConfigError("CORE_HTTP_URL is required when HTTP_ENABLED=true")
+    photo_upload_enabled = _bool(env, "PHOTO_UPLOAD_ENABLED", False)
+    photo_upload_url = _optional(env, "PHOTO_UPLOAD_URL")
+    if photo_upload_enabled and not photo_upload_url:
+        raise ConfigError("PHOTO_UPLOAD_URL is required when PHOTO_UPLOAD_ENABLED=true")
     mock_sensors = _bool(env, "MOCK_SENSORS", _default_mock_sensors(platform_name))
     _validate_platform_mode(mock_sensors, platform_name)
 
@@ -85,6 +100,17 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
         local_storage_dir=_string(env, "LOCAL_STORAGE_DIR", "data/telemetry"),
         local_storage_max_age_days=_int(env, "LOCAL_STORAGE_MAX_AGE_DAYS", 30, minimum=1),
         local_storage_max_size_mb=_int(env, "LOCAL_STORAGE_MAX_SIZE_MB", 256, minimum=1),
+        camera_enabled=_bool(env, "CAMERA_ENABLED", False),
+        camera_interval_seconds=_int(env, "CAMERA_INTERVAL_SECONDS", 3600, minimum=1),
+        camera_storage_dir=_string(env, "CAMERA_STORAGE_DIR", "data/photos"),
+        camera_jpeg_quality=_int(env, "CAMERA_JPEG_QUALITY", 95, minimum=1, maximum=100),
+        camera_capture_timeout_ms=_int(env, "CAMERA_CAPTURE_TIMEOUT_MS", 2000, minimum=0),
+        camera_process_timeout_seconds=_float(env, "CAMERA_PROCESS_TIMEOUT_SECONDS", 20.0, minimum=0.1),
+        camera_max_attempts=_int(env, "CAMERA_MAX_ATTEMPTS", 3, minimum=1),
+        camera_min_sharpness=_float(env, "CAMERA_MIN_SHARPNESS", 6.0, minimum=0.0),
+        photo_upload_enabled=photo_upload_enabled,
+        photo_upload_url=photo_upload_url,
+        photo_upload_token=_optional(env, "PHOTO_UPLOAD_TOKEN"),
         ads1115_address=_int(env, "ADS1115_ADDRESS", 0x48, minimum=0),
         bme280_pod1_address=_int(env, "BME280_POD1_ADDRESS", 0x76, minimum=0),
         bme280_pod2_address=_int(env, "BME280_POD2_ADDRESS", 0x77, minimum=0),
@@ -142,7 +168,13 @@ def _bool(env: Mapping[str, str], key: str, default: bool) -> bool:
     raise ConfigError(f"{key} must be a boolean")
 
 
-def _int(env: Mapping[str, str], key: str, default: int, minimum: int | None = None) -> int:
+def _int(
+    env: Mapping[str, str],
+    key: str,
+    default: int,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
     raw = _optional(env, key)
     try:
         value = int(raw, 0) if raw is not None else default
@@ -150,6 +182,8 @@ def _int(env: Mapping[str, str], key: str, default: int, minimum: int | None = N
         raise ConfigError(f"{key} must be an integer") from exc
     if minimum is not None and value < minimum:
         raise ConfigError(f"{key} must be >= {minimum}")
+    if maximum is not None and value > maximum:
+        raise ConfigError(f"{key} must be <= {maximum}")
     return value
 
 
