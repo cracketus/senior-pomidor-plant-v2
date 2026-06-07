@@ -1,25 +1,29 @@
-"""MLX90615 leaf temperature reader."""
+"""MLX90614/MLX90615-compatible infrared leaf temperature reader."""
 
 from __future__ import annotations
 
 from .base_sensor import error_reading, round_metric
 
-OBJECT_TEMPERATURE_REGISTER = 0x27
-
 
 def read(address: int = 0x5A, mock: bool = False) -> dict[str, float] | dict[str, dict[str, str]]:
     try:
         if mock:
-            return {"leaf_temperature_c": 24.9}
+            return {"ir_ambient_temp_c": 23.7, "leaf_temp_c": 24.9}
         return _read_hardware(address)
     except Exception as exc:  # noqa: BLE001 - sensor isolation boundary
-        return error_reading("mlx90615", str(exc))
+        return error_reading("mlx90614", str(exc))
 
 
 def _read_hardware(address: int) -> dict[str, float]:
-    from smbus2 import SMBus
+    import adafruit_mlx90614
+    import board
 
-    with SMBus(1) as bus:
-        raw = bus.read_word_data(address, OBJECT_TEMPERATURE_REGISTER)
-    temperature_c = raw * 0.02 - 273.15
-    return {"leaf_temperature_c": round_metric(temperature_c)}
+    i2c = board.I2C()
+    sensor = adafruit_mlx90614.MLX90614(i2c, address=address)
+    ambient_t = sensor.ambient_temperature
+    object_t = sensor.object_temperature
+
+    return {
+        "ir_ambient_temp_c": round_metric(ambient_t),
+        "leaf_temp_c": round_metric(object_t),
+    }
