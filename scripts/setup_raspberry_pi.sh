@@ -146,7 +146,7 @@ set_env_value() {
 install_host_packages() {
   log "Installing host packages"
   $SUDO apt-get update
-  $SUDO apt-get install -y ca-certificates curl git i2c-tools rpicam-apps-lite
+  $SUDO apt-get install -y ca-certificates curl git i2c-tools fswebcam v4l-utils
 }
 
 install_docker() {
@@ -170,10 +170,9 @@ enable_hardware_interfaces() {
   local config_file
   config_file="$(detect_boot_config)"
 
-  log "Ensuring I2C, 1-Wire, and camera auto-detection are enabled in $config_file"
+  log "Ensuring I2C and 1-Wire are enabled in $config_file"
   ensure_line "$config_file" "dtparam=i2c_arm=on" "^dtparam=i2c_arm=on$"
   ensure_line "$config_file" "dtoverlay=w1-gpio" "^dtoverlay=w1-gpio"
-  ensure_line "$config_file" "camera_auto_detect=1" "^camera_auto_detect=1$"
 }
 
 prepare_env_file() {

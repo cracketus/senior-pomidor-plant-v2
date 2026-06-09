@@ -1,4 +1,4 @@
-"""Raspberry Pi camera capture, validation, and local photo metadata."""
+"""USB camera capture, validation, and local photo metadata."""
 
 from __future__ import annotations
 
@@ -143,15 +143,17 @@ def cleanup_photo_storage(storage_dir: Path, max_age_days: int, max_size_mb: int
 
 def _capture_command(settings: Settings, output_path: Path) -> list[str]:
     return [
-        "rpicam-still",
-        "--output",
-        str(output_path),
-        "--nopreview",
-        "--timeout",
-        str(settings.camera_capture_timeout_ms),
-        "--quality",
+        "fswebcam",
+        "--device",
+        settings.camera_device,
+        "--resolution",
+        settings.camera_resolution,
+        "--jpeg",
         str(settings.camera_jpeg_quality),
-        "--autofocus-on-capture",
+        "--no-banner",
+        "--skip",
+        str(settings.camera_skip_frames),
+        str(output_path),
     ]
 
 

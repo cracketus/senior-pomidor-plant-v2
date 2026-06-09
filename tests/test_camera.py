@@ -11,12 +11,18 @@ from src.utils.camera import capture_photo, cleanup_photo_storage, list_pending_
 
 
 def test_capture_photo_saves_jpeg_and_metadata(tmp_path) -> None:
-    settings = _settings(tmp_path, CAMERA_MIN_SHARPNESS="1")
+    settings = _settings(
+        tmp_path,
+        CAMERA_DEVICE="/dev/video2",
+        CAMERA_RESOLUTION="1280x720",
+        CAMERA_MIN_SHARPNESS="1",
+        CAMERA_SKIP_FRAMES="3",
+    )
     commands = []
 
     def runner(command, timeout):
         commands.append((command, timeout))
-        _write_sharp_jpeg(Path(command[command.index("--output") + 1]))
+        _write_sharp_jpeg(Path(command[-1]))
         return subprocess.CompletedProcess(command, 0, "", "")
 
     record = capture_photo(
@@ -28,9 +34,19 @@ def test_capture_photo_saves_jpeg_and_metadata(tmp_path) -> None:
     assert record is not None
     assert record.image_path.exists()
     assert record.metadata_path.exists()
-    assert commands[0][0][:3] == ["rpicam-still", "--output", str(record.image_path.with_name(f".{record.image_path.stem}.attempt-1.jpg"))]
-    assert "--nopreview" in commands[0][0]
-    assert "--autofocus-on-capture" in commands[0][0]
+    assert commands[0][0] == [
+        "fswebcam",
+        "--device",
+        "/dev/video2",
+        "--resolution",
+        "1280x720",
+        "--jpeg",
+        "95",
+        "--no-banner",
+        "--skip",
+        "3",
+        str(record.image_path.with_name(f".{record.image_path.stem}.attempt-1.jpg")),
+    ]
     assert commands[0][1] == 20.0
 
     metadata = json.loads(record.metadata_path.read_text(encoding="utf-8"))
@@ -54,7 +70,7 @@ def test_capture_photo_retries_failed_command(tmp_path) -> None:
         calls += 1
         if calls == 1:
             return subprocess.CompletedProcess(command, 1, "", "camera busy")
-        _write_sharp_jpeg(Path(command[command.index("--output") + 1]))
+        _write_sharp_jpeg(Path(command[-1]))
         return subprocess.CompletedProcess(command, 0, "", "")
 
     record = capture_photo(settings, command_runner=runner)
@@ -71,7 +87,7 @@ def test_capture_photo_rejects_unreadable_file_and_retries(tmp_path) -> None:
     def runner(command, _timeout):
         nonlocal calls
         calls += 1
-        output = Path(command[command.index("--output") + 1])
+        output = Path(command[-1])
         if calls == 1:
             output.write_text("not a jpeg", encoding="utf-8")
         else:
@@ -89,7 +105,7 @@ def test_capture_photo_returns_none_after_low_sharpness_attempts(tmp_path) -> No
     settings = _settings(tmp_path, CAMERA_MIN_SHARPNESS="999", CAMERA_MAX_ATTEMPTS="2")
 
     def runner(command, _timeout):
-        _write_flat_jpeg(Path(command[command.index("--output") + 1]))
+        _write_flat_jpeg(Path(command[-1]))
         return subprocess.CompletedProcess(command, 0, "", "")
 
     record = capture_photo(settings, command_runner=runner)
@@ -103,7 +119,7 @@ def test_pending_and_uploaded_photo_metadata(tmp_path) -> None:
     settings = _settings(tmp_path, CAMERA_MIN_SHARPNESS="1")
 
     def runner(command, _timeout):
-        _write_sharp_jpeg(Path(command[command.index("--output") + 1]))
+        _write_sharp_jpeg(Path(command[-1]))
         return subprocess.CompletedProcess(command, 0, "", "")
 
     record = capture_photo(settings, command_runner=runner)

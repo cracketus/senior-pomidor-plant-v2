@@ -9,6 +9,9 @@ ARG INSTALL_HARDWARE_DEPS=true
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gcc i2c-tools python3-dev \
+    && if [ "$INSTALL_HARDWARE_DEPS" = "true" ]; then \
+        apt-get install -y --no-install-recommends fswebcam v4l-utils; \
+    fi \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt requirements-hardware.txt ./

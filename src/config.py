@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform as platform_module
+import re
 from dataclasses import dataclass
 from typing import Mapping
 
@@ -39,9 +40,11 @@ class Settings:
     camera_enabled: bool
     camera_interval_seconds: int
     camera_storage_dir: str
+    camera_device: str
+    camera_resolution: str
     camera_jpeg_quality: int
-    camera_capture_timeout_ms: int
     camera_process_timeout_seconds: float
+    camera_skip_frames: int
     camera_max_attempts: int
     camera_min_sharpness: float
     photo_upload_enabled: bool
@@ -103,9 +106,11 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
         camera_enabled=_bool(env, "CAMERA_ENABLED", False),
         camera_interval_seconds=_int(env, "CAMERA_INTERVAL_SECONDS", 3600, minimum=1),
         camera_storage_dir=_string(env, "CAMERA_STORAGE_DIR", "data/photos"),
+        camera_device=_string(env, "CAMERA_DEVICE", "/dev/video0"),
+        camera_resolution=_resolution(env, "CAMERA_RESOLUTION", "1920x1080"),
         camera_jpeg_quality=_int(env, "CAMERA_JPEG_QUALITY", 95, minimum=1, maximum=100),
-        camera_capture_timeout_ms=_int(env, "CAMERA_CAPTURE_TIMEOUT_MS", 2000, minimum=0),
         camera_process_timeout_seconds=_float(env, "CAMERA_PROCESS_TIMEOUT_SECONDS", 20.0, minimum=0.1),
+        camera_skip_frames=_int(env, "CAMERA_SKIP_FRAMES", 5, minimum=0),
         camera_max_attempts=_int(env, "CAMERA_MAX_ATTEMPTS", 3, minimum=1),
         camera_min_sharpness=_float(env, "CAMERA_MIN_SHARPNESS", 6.0, minimum=0.0),
         photo_upload_enabled=photo_upload_enabled,
@@ -215,6 +220,13 @@ def _channel(env: Mapping[str, str], key: str, default: str) -> str:
     value = _string(env, key, default).upper()
     if value not in {"A0", "A1", "A2", "A3"}:
         raise ConfigError(f"{key} must be one of A0, A1, A2, A3")
+    return value
+
+
+def _resolution(env: Mapping[str, str], key: str, default: str) -> str:
+    value = _string(env, key, default).lower()
+    if not re.fullmatch(r"[1-9][0-9]*x[1-9][0-9]*", value):
+        raise ConfigError(f"{key} must use WIDTHxHEIGHT format")
     return value
 
 
