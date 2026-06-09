@@ -6,7 +6,7 @@ This repository contains only the balcony hardware and telemetry collection laye
 
 ## Overview
 
-The Edge Node reads soil, air, light, and leaf-temperature sensors, formats the readings into a Senior Pomidor telemetry payload, stores a local copy on the edge node, and publishes the payload to the Core server over MQTT. HTTP is included as an optional fallback transport. The node can also capture local Raspberry Pi camera photos on an independent interval and upload them to the Core server over HTTP multipart.
+The Edge Node reads soil, air, light, and leaf-temperature sensors, formats the readings into a Senior Pomidor telemetry payload, stores a local copy on the edge node, and publishes the payload to the Core server over MQTT. HTTP is included as an optional fallback transport. The node can also capture local USB camera photos on an independent interval and upload them to the Core server over HTTP multipart.
 
 The application is designed around three constraints:
 
@@ -22,7 +22,7 @@ The application is designed around three constraints:
 | Linux desktop/server | Mock sensors | Useful for development and integration tests. |
 | Raspberry Pi Linux | Mock or real sensors | Use `MOCK_SENSORS=false` for real hardware. |
 | Docker on Windows/Linux | Mock sensors | Use `docker-compose.mock.yml`; no host hardware passthrough is required. |
-| Docker on Raspberry Pi Linux | Real sensors | Use `docker-compose.yml`; it passes through `/dev/i2c-1` and `/sys/bus/w1`. |
+| Docker on Raspberry Pi Linux | Real sensors | Use `docker-compose.yml`; it passes through `/dev/i2c-1`, `/dev/video0`, and `/sys/bus/w1`. |
 
 If `MOCK_SENSORS` is omitted, the app defaults to mock mode on non-Linux platforms and real sensor mode on Linux. Setting `MOCK_SENSORS=false` on Windows is rejected at startup with a configuration error.
 
@@ -35,7 +35,7 @@ If `MOCK_SENSORS` is omitted, the app defaults to mock mode on non-Linux platfor
 | BH1750 | I2C | `0x23` | Illuminance in lux |
 | MLX90615 | I2C / SMBus | `0x5A` | Non-contact leaf temperature |
 | DS18B20 x2 | 1-Wire | ROM IDs from `.env` | Soil temperature |
-| Raspberry Pi Camera | CSI / libcamera | `rpicam-still` | High-resolution plant photos |
+| USB Camera | V4L2 | `/dev/video0`, `fswebcam` | High-resolution plant photos |
 
 ## Project Structure
 
@@ -76,7 +76,7 @@ Important variables:
 - `CAMERA_ENABLED`: set to `true` on Raspberry Pi when the camera should capture photos.
 - `CAMERA_INTERVAL_SECONDS`: delay between camera capture attempts, independent from telemetry polling.
 - `CAMERA_STORAGE_DIR`: directory where accepted JPEG photos and metadata sidecars are stored.
-- `CAMERA_JPEG_QUALITY`, `CAMERA_CAPTURE_TIMEOUT_MS`, `CAMERA_MAX_ATTEMPTS`, `CAMERA_MIN_SHARPNESS`: capture quality and retry controls.
+- `CAMERA_DEVICE`, `CAMERA_RESOLUTION`, `CAMERA_JPEG_QUALITY`, `CAMERA_SKIP_FRAMES`, `CAMERA_MAX_ATTEMPTS`, `CAMERA_MIN_SHARPNESS`: USB camera capture quality and retry controls.
 - `PHOTO_UPLOAD_ENABLED`, `PHOTO_UPLOAD_URL`, `PHOTO_UPLOAD_TOKEN`: optional HTTP photo upload settings.
 - `ADS1115_*_DRY_READING` and `ADS1115_*_WET_READING`: raw ADS1115 soil moisture calibration values from `AnalogIn.value`.
 
@@ -166,7 +166,7 @@ Each accepted photo is written as a JPEG with a JSON sidecar containing `photo_i
 
 ## Photo Upload
 
-Photo bytes are not sent over MQTT. The recommended Core server receive method is an HTTP multipart endpoint because photos are large binary payloads and should not share the telemetry topic.
+Photo bytes are not sent over MQTT or embedded in telemetry payloads. The recommended Core server receive method is an HTTP multipart endpoint because photos are large binary payloads and should not share the telemetry topic.
 
 Set:
 
@@ -233,7 +233,7 @@ chmod +x scripts/setup_raspberry_pi.sh
 ```
 
 The script installs host packages, installs Docker if needed, enables I2C and 1-Wire, creates `.env` from `.env.example`, sets `MOCK_SENSORS=false`, builds the image, and starts the hardware container.
-It also installs Raspberry Pi camera tooling (`rpicam-apps-lite`) and keeps camera auto-detection enabled.
+It also installs USB camera tooling (`fswebcam` and `v4l-utils`).
 
 If the script enables I2C or 1-Wire, it will stop and ask for a reboot. Reboot and run the same command again:
 
@@ -273,7 +273,7 @@ Review `.env` after the first run and set the real MQTT server address, DS18B20 
 Before enabling camera capture in the edge node, verify the camera directly on the Raspberry Pi:
 
 ```bash
-rpicam-still --output test.jpg --nopreview --timeout 2000 --quality 95 --autofocus-on-capture
+fswebcam --device /dev/video0 --resolution 1920x1080 --jpeg 95 --no-banner --skip 5 test.jpg
 ```
 
 Then set:
@@ -281,6 +281,8 @@ Then set:
 ```env
 CAMERA_ENABLED=true
 CAMERA_INTERVAL_SECONDS=3600
+CAMERA_DEVICE=/dev/video0
+CAMERA_RESOLUTION=1920x1080
 ```
 
 ## Docker
@@ -300,4 +302,4 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-The hardware compose file can be parsed without `.env`, but the app still requires real MQTT and sensor configuration at runtime. It installs `requirements-hardware.txt`, including `rpi-lgpio` for the `RPi.GPIO` compatibility module on Raspberry Pi OS Bookworm, persists telemetry and photos to `./data`, and is Linux/Raspberry Pi specific because it passes through hardware host paths. Camera-enabled Docker deployments must have `rpicam-still` available inside the running container; the setup script installs the host package and the compose file runs privileged with `/run/udev` mounted for Raspberry Pi hardware access.
+The hardware compose file can be parsed without `.env`, but the app still requires real MQTT and sensor configuration at runtime. It installs `requirements-hardware.txt`, including `rpi-lgpio` for the `RPi.GPIO` compatibility module on Raspberry Pi OS Bookworm, persists telemetry and photos to `./data`, and is Linux/Raspberry Pi specific because it passes through hardware host paths. Camera-enabled Docker deployments use `/dev/video0` by default; the setup script installs `fswebcam` and `v4l-utils`, and the compose file runs privileged with `/run/udev` mounted for Raspberry Pi hardware access.

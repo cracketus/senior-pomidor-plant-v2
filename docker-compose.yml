@@ -11,6 +11,7 @@ services:
         required: false
     devices:
       - /dev/i2c-1:/dev/i2c-1
+      - /dev/video0:/dev/video0
     volumes:
       - ./data:/app/data
       - /run/udev:/run/udev:ro

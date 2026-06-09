@@ -50,9 +50,11 @@ def test_config_parses_camera_defaults() -> None:
     assert settings.camera_enabled is False
     assert settings.camera_interval_seconds == 3600
     assert settings.camera_storage_dir == "data/photos"
+    assert settings.camera_device == "/dev/video0"
+    assert settings.camera_resolution == "1920x1080"
     assert settings.camera_jpeg_quality == 95
-    assert settings.camera_capture_timeout_ms == 2000
     assert settings.camera_process_timeout_seconds == 20.0
+    assert settings.camera_skip_frames == 5
     assert settings.camera_max_attempts == 3
     assert settings.camera_min_sharpness == 6.0
     assert settings.photo_upload_enabled is False
@@ -67,9 +69,11 @@ def test_config_parses_camera_settings() -> None:
             "CAMERA_ENABLED": "true",
             "CAMERA_INTERVAL_SECONDS": "120",
             "CAMERA_STORAGE_DIR": "/var/lib/senior-pomidor/photos",
+            "CAMERA_DEVICE": "/dev/video2",
+            "CAMERA_RESOLUTION": "1280x720",
             "CAMERA_JPEG_QUALITY": "90",
-            "CAMERA_CAPTURE_TIMEOUT_MS": "3000",
             "CAMERA_PROCESS_TIMEOUT_SECONDS": "30",
+            "CAMERA_SKIP_FRAMES": "2",
             "CAMERA_MAX_ATTEMPTS": "5",
             "CAMERA_MIN_SHARPNESS": "8.5",
             "PHOTO_UPLOAD_ENABLED": "true",
@@ -81,9 +85,11 @@ def test_config_parses_camera_settings() -> None:
     assert settings.camera_enabled is True
     assert settings.camera_interval_seconds == 120
     assert settings.camera_storage_dir == "/var/lib/senior-pomidor/photos"
+    assert settings.camera_device == "/dev/video2"
+    assert settings.camera_resolution == "1280x720"
     assert settings.camera_jpeg_quality == 90
-    assert settings.camera_capture_timeout_ms == 3000
     assert settings.camera_process_timeout_seconds == 30.0
+    assert settings.camera_skip_frames == 2
     assert settings.camera_max_attempts == 5
     assert settings.camera_min_sharpness == 8.5
     assert settings.photo_upload_enabled is True
@@ -99,6 +105,16 @@ def test_photo_upload_url_required_when_upload_enabled() -> None:
 def test_config_rejects_invalid_camera_quality() -> None:
     with pytest.raises(ConfigError, match="CAMERA_JPEG_QUALITY"):
         load_config({"MQTT_HOST": "core.local", "CAMERA_JPEG_QUALITY": "101"})
+
+
+def test_config_rejects_invalid_camera_resolution() -> None:
+    with pytest.raises(ConfigError, match="CAMERA_RESOLUTION"):
+        load_config({"MQTT_HOST": "core.local", "CAMERA_RESOLUTION": "1920-1080"})
+
+
+def test_config_rejects_invalid_camera_skip_frames() -> None:
+    with pytest.raises(ConfigError, match="CAMERA_SKIP_FRAMES"):
+        load_config({"MQTT_HOST": "core.local", "CAMERA_SKIP_FRAMES": "-1"})
 
 
 def test_config_parses_raw_ads1115_readings_and_pod_flags() -> None:
