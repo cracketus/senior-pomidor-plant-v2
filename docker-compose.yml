@@ -5,6 +5,7 @@ services:
       args:
         INSTALL_HARDWARE_DEPS: "true"
     container_name: senior-pomidor-edge
+    network_mode: host
     restart: unless-stopped
     env_file:
       - path: .env

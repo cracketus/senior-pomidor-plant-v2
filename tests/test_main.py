@@ -15,6 +15,29 @@ def test_collect_readings_skips_disabled_pod2() -> None:
 
     assert readings["pod_1"] is not None
     assert readings["pod_2"] is None
+    assert readings["system_health"]["rpi_core"]["cpu_temp_c"] == 56.4
+    assert readings["system_health"]["pod_1_hardware"]["ina219"]["bus_voltage_v"] == 3.25
+    assert readings["system_health"]["pod_1_hardware"]["box_climate"]["air_temp_c"] == 26.0
+
+
+def test_run_includes_health_payload(monkeypatch) -> None:
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "MOCK_SENSORS": "true",
+            "MAX_TICKS": "1",
+        }
+    )
+    saved_payloads = []
+    sent_payloads = []
+
+    monkeypatch.setattr("src.main.save_payload", lambda _settings, payload, **_kwargs: saved_payloads.append(payload))
+    monkeypatch.setattr("src.main.MqttSender.publish", lambda _sender, payload: sent_payloads.append(payload) or True)
+
+    run(settings, sleep=lambda _seconds: None)
+
+    assert saved_payloads[0]["system_health"]["rpi_core"]["wifi_rssi_dbm"] == -68.0
+    assert sent_payloads[0]["system_health"]["pod_1_hardware"]["bus_current_ma"] == 12.4
 
 
 def test_run_captures_camera_when_interval_is_due(monkeypatch) -> None:

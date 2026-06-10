@@ -6,7 +6,7 @@ This repository contains only the balcony hardware and telemetry collection laye
 
 ## Overview
 
-The Edge Node reads soil, air, light, and leaf-temperature sensors, formats the readings into a Senior Pomidor telemetry payload, stores a local copy on the edge node, and publishes the payload to the Core server over MQTT. HTTP is included as an optional fallback transport. The node can also capture local USB camera photos on an independent interval and upload them to the Core server over HTTP multipart.
+The Edge Node reads soil, air, light, leaf-temperature, and hardware health sensors, formats the readings into a Senior Pomidor telemetry payload, stores a local copy on the edge node, and publishes the payload to the Core server over MQTT. HTTP is included as an optional fallback transport. The node can also capture local USB camera photos on an independent interval and upload them to the Core server over HTTP multipart.
 
 The application is designed around three constraints:
 
@@ -35,6 +35,8 @@ If `MOCK_SENSORS` is omitted, the app defaults to mock mode on non-Linux platfor
 | BH1750 | I2C | `0x23` | Illuminance in lux |
 | MLX90615 | I2C / SMBus | `0x5A` | Non-contact leaf temperature |
 | DS18B20 x2 | 1-Wire | ROM IDs from `.env` | Soil temperature |
+| DHT11 | GPIO | `DHT11_POD1_GPIO`, default `4` | Pod 1 box air temperature and humidity |
+| INA219 | I2C | `0x40` | Pod 1 hardware bus voltage and current |
 | USB Camera | V4L2 | `/dev/video0`, `fswebcam` | High-resolution plant photos |
 
 ## Project Structure
@@ -78,6 +80,8 @@ Important variables:
 - `CAMERA_STORAGE_DIR`: directory where accepted JPEG photos and metadata sidecars are stored.
 - `CAMERA_DEVICE`, `CAMERA_RESOLUTION`, `CAMERA_JPEG_QUALITY`, `CAMERA_SKIP_FRAMES`, `CAMERA_MAX_ATTEMPTS`, `CAMERA_MIN_SHARPNESS`: USB camera capture quality and retry controls.
 - `PHOTO_UPLOAD_ENABLED`, `PHOTO_UPLOAD_URL`, `PHOTO_UPLOAD_TOKEN`: optional HTTP photo upload settings.
+- `DHT11_POD1_GPIO`, `INA219_ADDRESS`: health-control hardware settings for Pod 1 box climate and bus monitoring.
+- `WIFI_INTERFACE`, `DISK_USAGE_PATH`: Raspberry Pi OS health probe settings.
 - `ADS1115_*_DRY_READING` and `ADS1115_*_WET_READING`: raw ADS1115 soil moisture calibration values from `AnalogIn.value`.
 
 MQTT publishes one JSON payload per tick to:
@@ -88,11 +92,11 @@ MQTT publishes one JSON payload per tick to:
 
 ## Payload Shape
 
-Telemetry payloads use schema version `senior-pomidor.edge.telemetry.v1`:
+Telemetry payloads use schema version `senior-pomidor.edge.telemetry.v2`:
 
 ```json
 {
-  "schema_version": "senior-pomidor.edge.telemetry.v1",
+  "schema_version": "senior-pomidor.edge.telemetry.v2",
   "device_id": "balcony-edge-01",
   "timestamp_utc": "2026-06-06T10:00:00Z",
   "pods": {
@@ -110,11 +114,28 @@ Telemetry payloads use schema version `senior-pomidor.edge.telemetry.v1`:
       },
       "errors": []
     }
+  },
+  "system_health": {
+    "rpi_core": {
+      "cpu_temp_c": 56.4,
+      "wifi_rssi_dbm": -68.0,
+      "disk_usage_percent": 34.2,
+      "io_wait_percent": 1.7
+    },
+    "pod_1_hardware": {
+      "bus_voltage_v": 3.25,
+      "bus_current_ma": 12.4,
+      "box_climate": {
+        "air_temp_c": 26.0,
+        "air_humidity_percent": 45.0
+      }
+    },
+    "errors": []
   }
 }
 ```
 
-Sensor errors are reported in each pod's `errors` array so partial telemetry can still be delivered.
+Plant sensor errors are reported in each pod's `errors` array so partial telemetry can still be delivered. Hardware health probe errors are reported in `system_health.errors`; failed health metrics or subtrees are omitted while the rest of the health payload remains available.
 
 If Pod 2 is not connected yet, set this in `.env`:
 
@@ -268,7 +289,7 @@ Mock mode on Raspberry Pi uses the same setup script without hardware passthroug
 ./scripts/setup_raspberry_pi.sh --mock
 ```
 
-Review `.env` after the first run and set the real MQTT server address, DS18B20 ROM IDs, and calibration values before relying on real telemetry.
+Review `.env` after the first run and set the real MQTT server address, DS18B20 ROM IDs, health-control GPIO/address values, and calibration values before relying on real telemetry.
 
 Before enabling camera capture in the edge node, verify the camera directly on the Raspberry Pi:
 
@@ -302,4 +323,4 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-The hardware compose file can be parsed without `.env`, but the app still requires real MQTT and sensor configuration at runtime. It installs `requirements-hardware.txt`, including `rpi-lgpio` for the `RPi.GPIO` compatibility module on Raspberry Pi OS Bookworm, persists telemetry and photos to `./data`, and is Linux/Raspberry Pi specific because it passes through hardware host paths. Camera-enabled Docker deployments use `/dev/video0` by default; the setup script installs `fswebcam` and `v4l-utils`, and the compose file runs privileged with `/run/udev` mounted for Raspberry Pi hardware access.
+The hardware compose file can be parsed without `.env`, but the app still requires real MQTT and sensor configuration at runtime. It installs `requirements-hardware.txt`, including `rpi-lgpio` for the `RPi.GPIO` compatibility module on Raspberry Pi OS Bookworm, persists telemetry and photos to `./data`, and is Linux/Raspberry Pi specific because it passes through hardware host paths. Camera-enabled Docker deployments use `/dev/video0` by default; the setup script installs `fswebcam`, `v4l-utils`, `libgpiod2`, and `wireless-tools`, and the compose file runs privileged with host networking plus `/run/udev` mounted for Raspberry Pi hardware and Wi-Fi RSSI access.

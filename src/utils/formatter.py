@@ -7,7 +7,7 @@ from typing import Any
 
 from src.config import Settings
 
-SCHEMA_VERSION = "senior-pomidor.edge.telemetry.v1"
+SCHEMA_VERSION = "senior-pomidor.edge.telemetry.v2"
 
 
 def format_payload(
@@ -26,6 +26,7 @@ def format_payload(
             "pod_1": _format_pod(readings.get("pod_1", {}), shared),
             "pod_2": _format_pod(readings.get("pod_2", {}), shared),
         },
+        "system_health": _format_system_health(readings.get("system_health", {})),
     }
 
 
@@ -58,6 +59,60 @@ def _merge_reading(reading: Any, metrics: dict[str, float], errors: list[dict[st
         return
 
     for key, value in reading.items():
+        if isinstance(value, (int, float)):
+            metrics[key] = float(value)
+
+
+def _format_system_health(readings: Any) -> dict[str, Any]:
+    errors: list[dict[str, str]] = []
+    result: dict[str, Any] = {
+        "rpi_core": {},
+        "pod_1_hardware": {},
+        "errors": errors,
+    }
+    if not isinstance(readings, dict):
+        return result
+
+    _merge_health_metrics(readings.get("rpi_core"), result["rpi_core"], errors)
+
+    pod_1_hardware = readings.get("pod_1_hardware", {})
+    if isinstance(pod_1_hardware, dict):
+        _merge_health_metrics(pod_1_hardware.get("ina219"), result["pod_1_hardware"], errors)
+        box_climate: dict[str, float] = {}
+        _merge_health_metrics(pod_1_hardware.get("box_climate"), box_climate, errors)
+        if box_climate:
+            result["pod_1_hardware"]["box_climate"] = box_climate
+
+    return result
+
+
+def _merge_health_metrics(reading: Any, metrics: dict[str, float], errors: list[dict[str, str]]) -> None:
+    if not isinstance(reading, dict):
+        return
+    error = reading.get("error")
+    if isinstance(error, dict):
+        errors.append(
+            {
+                "sensor": str(error.get("sensor", "unknown")),
+                "message": str(error.get("message", "unknown health probe error")),
+            }
+        )
+        return
+
+    reading_errors = reading.get("errors")
+    if isinstance(reading_errors, list):
+        for item in reading_errors:
+            if isinstance(item, dict):
+                errors.append(
+                    {
+                        "sensor": str(item.get("sensor", "unknown")),
+                        "message": str(item.get("message", "unknown health probe error")),
+                    }
+                )
+
+    for key, value in reading.items():
+        if key == "errors":
+            continue
         if isinstance(value, (int, float)):
             metrics[key] = float(value)
 
