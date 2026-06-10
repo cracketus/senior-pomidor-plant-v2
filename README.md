@@ -306,6 +306,140 @@ CAMERA_DEVICE=/dev/video0
 CAMERA_RESOLUTION=1920x1080
 ```
 
+## Hardware Discovery and Troubleshooting
+
+Start with a single hardware tick and the latest saved telemetry file. This shows both numeric values and isolated sensor errors:
+
+```bash
+docker compose logs -f senior-pomidor-edge
+ls -lt data/telemetry | head
+cat data/telemetry/<latest-file>.json
+```
+
+In mock mode the readings are fixed example values. If real sensors are connected, confirm `.env` contains:
+
+```env
+MOCK_SENSORS=false
+```
+
+After changing `.env`, restart the container:
+
+```bash
+docker compose up --build -d
+```
+
+### Find Sensor IDs and Addresses
+
+I2C sensors share `/dev/i2c-1`. Detect them on the Raspberry Pi host:
+
+```bash
+sudo i2cdetect -y 1
+```
+
+Expected addresses:
+
+| Device | Expected address | `.env` setting |
+| --- | --- | --- |
+| ADS1115 | `0x48` | `ADS1115_ADDRESS=0x48` |
+| BME280 Pod 1 | `0x76` | `BME280_POD1_ADDRESS=0x76` |
+| BME280 Pod 2 | `0x77` | `BME280_POD2_ADDRESS=0x77` |
+| BH1750 | `0x23` | `BH1750_ADDRESS=0x23` |
+| MLX90615 / MLX90614-compatible | `0x5A` | `MLX90615_ADDRESS=0x5A` |
+| INA219 | `0x40` | `INA219_ADDRESS=0x40` |
+
+DS18B20 sensors are 1-Wire devices and expose ROM IDs under `/sys/bus/w1/devices`:
+
+```bash
+ls /sys/bus/w1/devices/
+ls /sys/bus/w1/devices/28-*
+```
+
+Use the full `28-...` directory name in `.env`:
+
+```env
+DS18B20_POD1_ROM=28-000000000001
+DS18B20_POD2_ROM=28-000000000002
+```
+
+DHT11 has no discoverable ID. Confirm the GPIO wiring and set the BCM GPIO number:
+
+```env
+DHT11_POD1_GPIO=4
+```
+
+USB cameras usually appear as `/dev/video*`:
+
+```bash
+v4l2-ctl --list-devices
+ls -l /dev/video*
+```
+
+Set the selected device:
+
+```env
+CAMERA_DEVICE=/dev/video0
+```
+
+Wi-Fi health uses the host interface name:
+
+```bash
+iwconfig
+cat /proc/net/wireless
+```
+
+Set it if your Raspberry Pi does not use `wlan0`:
+
+```env
+WIFI_INTERFACE=wlan0
+```
+
+### If a Sensor Is Not Detected
+
+- Reboot after enabling I2C or 1-Wire. The setup script will tell you when this is required.
+- Verify I2C is enabled with `sudo raspi-config` or by checking `/boot/firmware/config.txt` for `dtparam=i2c_arm=on`.
+- Verify 1-Wire is enabled by checking for `dtoverlay=w1-gpio` and `/sys/bus/w1/devices/28-*`.
+- Confirm power, ground, SDA, and SCL wiring. I2C needs common ground and the correct 3.3 V logic level.
+- Check for address conflicts. Two BME280 boards on the same bus must use different addresses, normally `0x76` and `0x77`.
+- Run `sudo i2cdetect -y 1` on the host, not inside a broken container first. If the host cannot see the address, the app cannot read it.
+- For Docker hardware mode, use `docker-compose.yml`, not `docker-compose.mock.yml`. The hardware compose file passes through I2C, camera, 1-Wire, `/sys`, and host networking.
+- Rebuild after dependency changes: `docker compose up --build -d`.
+- If only Pod 2 is missing, set `POD2_ENABLED=false` so the app skips Pod 2 sensors cleanly.
+
+### If Values Look Wrong
+
+- Check `MOCK_SENSORS`. Mock mode returns stable example values and ignores real hardware.
+- ADS1115 soil moisture depends on calibration. Re-measure dry and wet raw readings and update `ADS1115_POD*_DRY_READING` and `ADS1115_POD*_WET_READING`. If moisture moves backward, dry and wet values are likely swapped.
+- BME280 pressure should be near local atmospheric pressure, often around `950-1050 hPa`. A very wrong value usually means the wrong I2C address, bad wiring, or a damaged board.
+- DHT11 is slow and low precision. Read it at normal telemetry intervals, avoid placing it near heat sources, and expect coarse humidity/temperature steps.
+- DS18B20 should be stable. If it disappears intermittently, check the 4.7 kOhm pull-up resistor between data and 3.3 V and confirm the ROM ID in `.env`.
+- INA219 voltage should match the monitored bus, and current depends on correct load/shunt wiring direction. Negative or impossible current usually means the load is wired on the wrong side or the sensor is measuring the wrong rail.
+- MLX90615/MLX90614 leaf temperature is line-of-sight. Reflective, wet, or off-target leaves can produce surprising values.
+- Wi-Fi RSSI is in dBm. Values around `-30` are strong, around `-70` are weak but usable, and below `-80` are unreliable.
+- CPU temperature is Celsius. Sustained values near throttling range mean the Pi needs better airflow, a heatsink, or lower enclosure temperature.
+- Disk usage and I/O wait come from `psutil`. If disk usage is unexpected, confirm `DISK_USAGE_PATH` points to the mounted data path you care about.
+
+### Reading Error Fields
+
+Sensor failures are non-fatal. Plant sensor errors appear under each pod:
+
+```json
+"errors": [
+  { "sensor": "bme280", "message": "timeout" }
+]
+```
+
+System health errors appear under `system_health.errors`:
+
+```json
+"system_health": {
+  "errors": [
+    { "sensor": "rpi_wifi_rssi", "message": "RSSI for interface wlan0 is unavailable" }
+  ]
+}
+```
+
+When an error appears, fix the named sensor first, then run one telemetry tick again and inspect the newest JSON file.
+
 ## Docker
 
 Cross-platform mock container:
