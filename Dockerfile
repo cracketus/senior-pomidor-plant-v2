@@ -10,7 +10,7 @@ ARG INSTALL_HARDWARE_DEPS=true
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gcc i2c-tools python3-dev \
     && if [ "$INSTALL_HARDWARE_DEPS" = "true" ]; then \
-        apt-get install -y --no-install-recommends fswebcam v4l-utils; \
+        apt-get install -y --no-install-recommends fswebcam v4l-utils libgpiod2 wireless-tools; \
     fi \
     && rm -rf /var/lib/apt/lists/*
 

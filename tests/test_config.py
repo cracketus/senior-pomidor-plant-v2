@@ -62,6 +62,32 @@ def test_config_parses_camera_defaults() -> None:
     assert settings.photo_upload_token is None
 
 
+def test_config_parses_health_defaults() -> None:
+    settings = load_config({"MQTT_HOST": "core.local"})
+
+    assert settings.dht11_pod1_gpio == 4
+    assert settings.ina219_address == 0x40
+    assert settings.wifi_interface == "wlan0"
+    assert settings.disk_usage_path == "/"
+
+
+def test_config_parses_health_settings() -> None:
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "DHT11_POD1_GPIO": "17",
+            "INA219_ADDRESS": "0x41",
+            "WIFI_INTERFACE": "wlan1",
+            "DISK_USAGE_PATH": "/app/data",
+        }
+    )
+
+    assert settings.dht11_pod1_gpio == 17
+    assert settings.ina219_address == 0x41
+    assert settings.wifi_interface == "wlan1"
+    assert settings.disk_usage_path == "/app/data"
+
+
 def test_config_parses_camera_settings() -> None:
     settings = load_config(
         {

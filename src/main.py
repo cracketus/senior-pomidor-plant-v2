@@ -9,7 +9,7 @@ from src.config import ConfigError, Settings, load_config
 from src.network.http_sender import HttpSender
 from src.network.mqtt_sender import MqttSender
 from src.network.photo_sender import HttpPhotoSender
-from src.sensors import adc_ads1115, air_bme280, ir_mlx90615, light_bh1750, temp_ds18b20
+from src.sensors import adc_ads1115, air_bme280, dht11, ina219, ir_mlx90615, light_bh1750, rpi_core, temp_ds18b20
 from src.utils.formatter import format_payload
 from src.utils.camera import capture_photo
 from src.utils.local_storage import save_payload
@@ -24,6 +24,7 @@ def collect_readings(settings: Settings) -> dict[str, Any]:
             "light": light_bh1750.read(address=settings.bh1750_address, mock=settings.mock_sensors),
             "leaf_temperature": ir_mlx90615.read(address=settings.mlx90615_address, mock=settings.mock_sensors),
         },
+        "system_health": _collect_system_health(settings),
     }
 
 
@@ -60,6 +61,20 @@ def _collect_pod_readings(settings: Settings, pod_index: int) -> dict[str, Any]:
             mock=settings.mock_sensors,
             pod_index=pod_index,
         ),
+    }
+
+
+def _collect_system_health(settings: Settings) -> dict[str, Any]:
+    return {
+        "rpi_core": rpi_core.read(
+            wifi_interface=settings.wifi_interface,
+            disk_usage_path=settings.disk_usage_path,
+            mock=settings.mock_sensors,
+        ),
+        "pod_1_hardware": {
+            "ina219": ina219.read(address=settings.ina219_address, mock=settings.mock_sensors),
+            "box_climate": dht11.read(gpio_pin=settings.dht11_pod1_gpio, mock=settings.mock_sensors),
+        },
     }
 
 
