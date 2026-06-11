@@ -17,7 +17,6 @@ def test_collect_readings_skips_disabled_pod2() -> None:
     assert readings["pod_2"] is None
     assert readings["system_health"]["rpi_core"]["cpu_temp_c"] == 56.4
     assert readings["system_health"]["pod_1_hardware"]["ina219"]["bus_voltage_v"] == 3.25
-    assert readings["system_health"]["pod_1_hardware"]["box_climate"]["air_temp_c"] == 26.0
 
 
 def test_run_includes_health_payload(monkeypatch) -> None:

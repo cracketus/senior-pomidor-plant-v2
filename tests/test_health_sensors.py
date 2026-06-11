@@ -1,29 +1,7 @@
 import sys
 import types
 
-from src.sensors import dht11, ina219, rpi_core
-
-
-def test_dht11_reads_box_climate(monkeypatch) -> None:
-    captured = {}
-
-    class FakeDHT11:
-        def __init__(self, pin, use_pulseio):
-            captured["pin"] = pin
-            captured["use_pulseio"] = use_pulseio
-            self.temperature = 26.04
-            self.humidity = 44.96
-
-        def exit(self):
-            captured["exited"] = True
-
-    monkeypatch.setitem(sys.modules, "board", types.SimpleNamespace(D4="gpio4"))
-    monkeypatch.setitem(sys.modules, "adafruit_dht", types.SimpleNamespace(DHT11=FakeDHT11))
-
-    reading = dht11.read(gpio_pin=4)
-
-    assert reading == {"air_temp_c": 26.0, "air_humidity_percent": 45.0}
-    assert captured == {"pin": "gpio4", "use_pulseio": False, "exited": True}
+from src.sensors import ina219, rpi_core
 
 
 def test_ina219_reads_voltage_and_current(monkeypatch) -> None:
@@ -35,9 +13,9 @@ def test_ina219_reads_voltage_and_current(monkeypatch) -> None:
             return "i2c-bus"
 
     class FakeINA219:
-        def __init__(self, i2c, address):
+        def __init__(self, i2c, addr):
             captured["i2c"] = i2c
-            captured["address"] = address
+            captured["address"] = addr
             self.bus_voltage = 3.246
             self.current = 12.44
 

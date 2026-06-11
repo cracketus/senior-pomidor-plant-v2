@@ -9,7 +9,7 @@ from src.config import ConfigError, Settings, load_config
 from src.network.http_sender import HttpSender
 from src.network.mqtt_sender import MqttSender
 from src.network.photo_sender import HttpPhotoSender
-from src.sensors import adc_ads1115, air_bme280, dht11, ina219, ir_mlx90615, light_bh1750, rpi_core, temp_ds18b20
+from src.sensors import adc_ads1115, air_bme280, ina219, ir_mlx90615, light_bh1750, rpi_core, temp_ds18b20
 from src.utils.formatter import format_payload
 from src.utils.camera import capture_photo
 from src.utils.local_storage import save_payload
@@ -73,7 +73,6 @@ def _collect_system_health(settings: Settings) -> dict[str, Any]:
         ),
         "pod_1_hardware": {
             "ina219": ina219.read(address=settings.ina219_address, mock=settings.mock_sensors),
-            "box_climate": dht11.read(gpio_pin=settings.dht11_pod1_gpio, mock=settings.mock_sensors),
         },
     }
 

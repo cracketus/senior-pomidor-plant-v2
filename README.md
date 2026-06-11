@@ -35,7 +35,6 @@ If `MOCK_SENSORS` is omitted, the app defaults to mock mode on non-Linux platfor
 | BH1750 | I2C | `0x23` | Illuminance in lux |
 | MLX90615 | I2C / SMBus | `0x5A` | Non-contact leaf temperature |
 | DS18B20 x2 | 1-Wire | ROM IDs from `.env` | Soil temperature |
-| DHT11 | GPIO | `DHT11_POD1_GPIO`, default `4` | Pod 1 box air temperature and humidity |
 | INA219 | I2C | `0x40` | Pod 1 hardware bus voltage and current |
 | USB Camera | V4L2 | `/dev/video0`, `fswebcam` | High-resolution plant photos |
 
@@ -81,7 +80,7 @@ Important variables:
 - `CAMERA_STORAGE_DIR`: directory where accepted JPEG photos and metadata sidecars are stored.
 - `CAMERA_DEVICE`, `CAMERA_RESOLUTION`, `CAMERA_JPEG_QUALITY`, `CAMERA_SKIP_FRAMES`, `CAMERA_MAX_ATTEMPTS`, `CAMERA_MIN_SHARPNESS`: USB camera capture quality and retry controls.
 - `PHOTO_UPLOAD_ENABLED`, `PHOTO_UPLOAD_URL`, `PHOTO_UPLOAD_TOKEN`: optional HTTP photo upload settings.
-- `DHT11_POD1_GPIO`, `INA219_ADDRESS`: health-control hardware settings for Pod 1 box climate and bus monitoring.
+- `INA219_ADDRESS`: health-control hardware setting for Pod 1 bus monitoring.
 - `WIFI_INTERFACE`, `DISK_USAGE_PATH`: Raspberry Pi OS health probe settings.
 - `ADS1115_*_DRY_READING` and `ADS1115_*_WET_READING`: raw ADS1115 soil moisture calibration values from `AnalogIn.value`.
 
@@ -125,11 +124,7 @@ Telemetry payloads use schema version `senior-pomidor.edge.telemetry.v2`:
     },
     "pod_1_hardware": {
       "bus_voltage_v": 3.25,
-      "bus_current_ma": 12.4,
-      "box_climate": {
-        "air_temp_c": 26.0,
-        "air_humidity_percent": 45.0
-      }
+      "bus_current_ma": 12.4
     },
     "errors": []
   }
@@ -295,7 +290,7 @@ Mock mode on Raspberry Pi uses the same setup script without hardware passthroug
 ./scripts/setup_raspberry_pi.sh --mock
 ```
 
-Review `.env` after the first run and set the real MQTT server address, DS18B20 ROM IDs, health-control GPIO/address values, and calibration values before relying on real telemetry.
+Review `.env` after the first run and set the real MQTT server address, DS18B20 ROM IDs, health-control address values, and calibration values before relying on real telemetry.
 
 Before enabling camera capture in the edge node, verify the camera directly on the Raspberry Pi:
 
@@ -367,12 +362,6 @@ DS18B20_POD1_ROM=28-000000000001
 DS18B20_POD2_ROM=28-000000000002
 ```
 
-DHT11 has no discoverable ID. Confirm the GPIO wiring and set the BCM GPIO number:
-
-```env
-DHT11_POD1_GPIO=4
-```
-
 USB cameras usually appear as `/dev/video*`:
 
 ```bash
@@ -416,7 +405,6 @@ WIFI_INTERFACE=wlan0
 - Check `MOCK_SENSORS`. Mock mode returns stable example values and ignores real hardware.
 - ADS1115 soil moisture depends on calibration. Re-measure dry and wet raw readings and update `ADS1115_POD*_DRY_READING` and `ADS1115_POD*_WET_READING`. If moisture moves backward, dry and wet values are likely swapped.
 - BME280 pressure should be near local atmospheric pressure, often around `950-1050 hPa`. A very wrong value usually means the wrong I2C address, bad wiring, or a damaged board.
-- DHT11 is slow and low precision. Read it at normal telemetry intervals, avoid placing it near heat sources, and expect coarse humidity/temperature steps.
 - DS18B20 should be stable. If it disappears intermittently, check the 4.7 kOhm pull-up resistor between data and 3.3 V and confirm the ROM ID in `.env`.
 - INA219 voltage should match the monitored bus, and current depends on correct load/shunt wiring direction. Negative or impossible current usually means the load is wired on the wrong side or the sensor is measuring the wrong rail.
 - MLX90615/MLX90614 leaf temperature is line-of-sight. Reflective, wet, or off-target leaves can produce surprising values.
