@@ -78,10 +78,6 @@ def _format_system_health(readings: Any) -> dict[str, Any]:
     pod_1_hardware = readings.get("pod_1_hardware", {})
     if isinstance(pod_1_hardware, dict):
         _merge_health_metrics(pod_1_hardware.get("ina219"), result["pod_1_hardware"], errors)
-        box_climate: dict[str, float] = {}
-        _merge_health_metrics(pod_1_hardware.get("box_climate"), box_climate, errors)
-        if box_climate:
-            result["pod_1_hardware"]["box_climate"] = box_climate
 
     return result
 

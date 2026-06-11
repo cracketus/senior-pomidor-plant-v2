@@ -3,7 +3,6 @@ adafruit-blinka==9.1.0
 adafruit-circuitpython-ads1x15==3.0.4
 adafruit-circuitpython-bh1750==1.1.19
 adafruit-circuitpython-bme280==2.6.32
-adafruit-circuitpython-dht==4.0.12
 adafruit-circuitpython-ina219==3.5.2
 adafruit-circuitpython-mlx90614
 rpi-lgpio==0.6

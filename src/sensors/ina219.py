@@ -19,7 +19,7 @@ def _read_hardware(address: int) -> dict[str, float]:
     from adafruit_ina219 import INA219
 
     i2c = board.I2C()
-    sensor = INA219(i2c, address=address)
+    sensor = INA219(i2c, addr=address)
     return {
         "bus_voltage_v": round_metric(sensor.bus_voltage, 2),
         "bus_current_ma": round_metric(sensor.current, 1),

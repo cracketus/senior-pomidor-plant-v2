@@ -55,7 +55,6 @@ class Settings:
     bme280_pod2_address: int
     bh1750_address: int
     mlx90615_address: int
-    dht11_pod1_gpio: int
     ina219_address: int
     wifi_interface: str
     disk_usage_path: str
@@ -125,7 +124,6 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
         bme280_pod2_address=_int(env, "BME280_POD2_ADDRESS", 0x77, minimum=0),
         bh1750_address=_int(env, "BH1750_ADDRESS", 0x23, minimum=0),
         mlx90615_address=_int(env, "MLX90615_ADDRESS", 0x5A, minimum=0),
-        dht11_pod1_gpio=_int(env, "DHT11_POD1_GPIO", 4, minimum=0),
         ina219_address=_int(env, "INA219_ADDRESS", 0x40, minimum=0),
         wifi_interface=_string(env, "WIFI_INTERFACE", "wlan0"),
         disk_usage_path=_string(env, "DISK_USAGE_PATH", "/"),

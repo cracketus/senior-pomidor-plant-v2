@@ -19,7 +19,6 @@ def test_formatter_preserves_partial_readings_and_errors() -> None:
                 "rpi_core": {"cpu_temp_c": 56.4, "wifi_rssi_dbm": -68},
                 "pod_1_hardware": {
                     "ina219": {"bus_voltage_v": 3.25, "bus_current_ma": 12.4},
-                    "box_climate": {"air_temp_c": 26.0, "air_humidity_percent": 45.0},
                 },
             },
         },
@@ -38,7 +37,6 @@ def test_formatter_preserves_partial_readings_and_errors() -> None:
         "pod_1_hardware": {
             "bus_voltage_v": 3.25,
             "bus_current_ma": 12.4,
-            "box_climate": {"air_temp_c": 26.0, "air_humidity_percent": 45.0},
         },
         "errors": [],
     }
@@ -70,7 +68,6 @@ def test_formatter_isolates_health_errors() -> None:
                 },
                 "pod_1_hardware": {
                     "ina219": {"error": {"sensor": "ina219", "message": "i2c timeout"}},
-                    "box_climate": {"air_temp_c": 26.0, "air_humidity_percent": 45.0},
                 },
             },
         },
@@ -79,9 +76,7 @@ def test_formatter_isolates_health_errors() -> None:
 
     assert payload["system_health"] == {
         "rpi_core": {"cpu_temp_c": 56.4},
-        "pod_1_hardware": {
-            "box_climate": {"air_temp_c": 26.0, "air_humidity_percent": 45.0},
-        },
+        "pod_1_hardware": {},
         "errors": [
             {"sensor": "rpi_wifi_rssi", "message": "RSSI unavailable"},
             {"sensor": "ina219", "message": "i2c timeout"},
