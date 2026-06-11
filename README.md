@@ -46,6 +46,7 @@ If `MOCK_SENSORS` is omitted, the app defaults to mock mode on non-Linux platfor
 |-- docker-compose.yml
 |-- docker-compose.mock.yml
 |-- Dockerfile
+|-- docs/
 |-- requirements.txt
 |-- requirements-hardware.txt
 |-- scripts/
@@ -255,6 +256,11 @@ chmod +x scripts/setup_raspberry_pi.sh
 
 The script installs host packages, installs Docker if needed, enables I2C and 1-Wire, creates `.env` from `.env.example`, sets `MOCK_SENSORS=false`, builds the image, and starts the hardware container.
 It also installs USB camera tooling (`fswebcam` and `v4l-utils`).
+
+Operations runbooks:
+
+- [Raspberry Pi 24/7 OS configuration](docs/raspberry-pi-24-7-os.md)
+- [Monthly maintenance and planned restarts](docs/maintenance-runbook.md)
 
 If the script enables I2C or 1-Wire, it will stop and ask for a reboot. Reboot and run the same command again:
 
