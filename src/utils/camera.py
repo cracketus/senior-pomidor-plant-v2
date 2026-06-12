@@ -6,10 +6,10 @@ import json
 import logging
 import re
 import subprocess
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Callable, Sequence
 
 from src.config import Settings
 

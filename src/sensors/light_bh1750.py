@@ -15,8 +15,8 @@ def read(address: int = 0x23, mock: bool = False) -> dict[str, float] | dict[str
 
 
 def _read_hardware(address: int) -> dict[str, float]:
-    import board
     import adafruit_bh1750
+    import board
 
     i2c = board.I2C()
     sensor = adafruit_bh1750.BH1750(i2c, address=address)

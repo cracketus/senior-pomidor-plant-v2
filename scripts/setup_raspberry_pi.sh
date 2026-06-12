@@ -102,11 +102,11 @@ done
 [ -f ".env.example" ] || die ".env.example is missing."
 
 if [ "$(id -u)" -eq 0 ]; then
-  SUDO=""
+  SUDO=()
   TARGET_USER="${SUDO_USER:-root}"
 else
   command -v sudo >/dev/null 2>&1 || die "sudo is required."
-  SUDO="sudo"
+  SUDO=(sudo)
   TARGET_USER="$(id -un)"
 fi
 
@@ -127,7 +127,7 @@ ensure_line() {
 
   if ! grep -Eq "$pattern" "$file"; then
     log "Adding '$line' to $file"
-    printf '\n%s\n' "$line" | $SUDO tee -a "$file" >/dev/null
+    printf '\n%s\n' "$line" | "${SUDO[@]}" tee -a "$file" >/dev/null
     REBOOT_NEEDED="true"
   fi
 }
@@ -145,8 +145,8 @@ set_env_value() {
 
 install_host_packages() {
   log "Installing host packages"
-  $SUDO apt-get update
-  $SUDO apt-get install -y ca-certificates curl git i2c-tools fswebcam v4l-utils libgpiod2 wireless-tools
+  "${SUDO[@]}" apt-get update
+  "${SUDO[@]}" apt-get install -y ca-certificates curl git i2c-tools fswebcam v4l-utils libgpiod2 wireless-tools
 }
 
 install_docker() {
@@ -154,15 +154,15 @@ install_docker() {
     log "Docker is already installed"
   else
     log "Installing Docker"
-    curl -fsSL https://get.docker.com | $SUDO sh
+    curl -fsSL https://get.docker.com | "${SUDO[@]}" sh
   fi
 
-  if ! docker compose version >/dev/null 2>&1 && ! $SUDO docker compose version >/dev/null 2>&1; then
+  if ! docker compose version >/dev/null 2>&1 && ! "${SUDO[@]}" docker compose version >/dev/null 2>&1; then
     die "Docker Compose plugin is not available after Docker installation."
   fi
 
   if [ "$TARGET_USER" != "root" ]; then
-    $SUDO usermod -aG docker "$TARGET_USER" || true
+    "${SUDO[@]}" usermod -aG docker "$TARGET_USER" || true
   fi
 }
 
@@ -205,10 +205,10 @@ start_container() {
 
   if [ "$MODE" = "hardware" ]; then
     log "Starting hardware container"
-    $SUDO docker compose up --build -d
+    "${SUDO[@]}" docker compose up --build -d
   else
     log "Starting mock container"
-    $SUDO docker compose -f docker-compose.mock.yml up --build -d
+    "${SUDO[@]}" docker compose -f docker-compose.mock.yml up --build -d
   fi
 }
 
@@ -225,7 +225,7 @@ if [ "$REBOOT_NEEDED" = "true" ]; then
   log "A reboot is required before hardware interfaces are available."
   if [ "$AUTO_REBOOT" = "true" ]; then
     log "Rebooting now. Run this script again after the Raspberry Pi starts."
-    $SUDO reboot
+    "${SUDO[@]}" reboot
   fi
   log "Run 'sudo reboot', then rerun this script."
   exit 0

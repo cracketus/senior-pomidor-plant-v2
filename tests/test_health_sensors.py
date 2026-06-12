@@ -65,8 +65,16 @@ def test_rpi_core_reads_psutil_disk_and_io_wait(monkeypatch) -> None:
 
 def test_rpi_core_keeps_partial_metrics_on_probe_failure(monkeypatch) -> None:
     monkeypatch.setattr(rpi_core, "read_cpu_temp_c", lambda: 56.4)
-    monkeypatch.setattr(rpi_core, "read_wifi_rssi_dbm", lambda _interface: (_ for _ in ()).throw(RuntimeError("RSSI unavailable")))
-    monkeypatch.setattr(rpi_core, "read_disk_usage_percent", lambda _path: 34.2)
+
+    def raise_rssi_error(_interface):
+        raise RuntimeError("RSSI unavailable")
+
+    monkeypatch.setattr(rpi_core, "read_wifi_rssi_dbm", raise_rssi_error)
+    monkeypatch.setattr(
+        rpi_core,
+        "read_disk_usage_percent",
+        lambda _path: 34.2,
+    )
     monkeypatch.setattr(rpi_core, "read_io_wait_percent", lambda: 1.7)
 
     reading = rpi_core.read(wifi_interface="wlan0", disk_usage_path="/")

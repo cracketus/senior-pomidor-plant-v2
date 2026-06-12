@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from src.config import ConfigError, Settings, load_config
 from src.network.http_sender import HttpSender
 from src.network.mqtt_sender import MqttSender
 from src.network.photo_sender import HttpPhotoSender
 from src.sensors import adc_ads1115, air_bme280, ina219, ir_mlx90615, light_bh1750, rpi_core, temp_ds18b20
-from src.utils.formatter import format_payload
 from src.utils.camera import capture_photo
+from src.utils.formatter import format_payload
 from src.utils.local_storage import save_payload
 from src.utils.logger import configure_logger
 
@@ -92,7 +93,11 @@ def run(
     next_camera_at = 0.0
     tick = 0
 
-    logger.info("Starting Senior Pomidor edge node device_id=%s mock_sensors=%s", settings.device_id, settings.mock_sensors)
+    logger.info(
+        "Starting Senior Pomidor edge node device_id=%s mock_sensors=%s",
+        settings.device_id,
+        settings.mock_sensors,
+    )
     while True:
         tick += 1
         readings = collect_readings(settings)

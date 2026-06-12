@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import ssl
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from src.config import Settings, mqtt_topic
 

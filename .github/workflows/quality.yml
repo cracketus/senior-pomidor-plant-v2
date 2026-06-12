@@ -1,0 +1,102 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  python-quality:
+    name: Python quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Check formatting
+        run: ruff format --check .
+
+      - name: Run lint
+        run: ruff check .
+
+      - name: Run type checks
+        run: mypy src
+
+  dependency-security:
+    name: Dependency security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-hardware.txt
+            requirements-dev.txt
+
+      - name: Install audit tool
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Audit runtime dependencies
+        run: pip-audit --cache-dir .cache/pip-audit -r requirements.txt
+
+      - name: Audit hardware dependencies
+        run: pip-audit --cache-dir .cache/pip-audit -r requirements-hardware.txt
+
+  shell-docker-security:
+    name: Shell, Docker, and secret hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck
+
+      - name: Check setup script
+        run: shellcheck scripts/setup_raspberry_pi.sh
+
+      - name: Validate hardware Compose file
+        run: docker compose config
+
+      - name: Validate mock Compose file
+        run: docker compose -f docker-compose.mock.yml config
+
+      - name: Check Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          config: .hadolint.yaml
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

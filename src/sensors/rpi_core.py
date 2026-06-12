@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -26,12 +27,14 @@ def read(
             "io_wait_percent": 1.7,
         }
 
-    metrics: dict[str, float] = {}
+    metrics: dict[str, Any] = {}
     errors: list[dict[str, str]] = []
 
     _probe_metric(metrics, errors, "cpu_temp_c", "rpi_cpu_temp", lambda: read_cpu_temp_c())
     _probe_metric(metrics, errors, "wifi_rssi_dbm", "rpi_wifi_rssi", lambda: read_wifi_rssi_dbm(wifi_interface))
-    _probe_metric(metrics, errors, "disk_usage_percent", "rpi_disk_usage", lambda: read_disk_usage_percent(disk_usage_path))
+    _probe_metric(
+        metrics, errors, "disk_usage_percent", "rpi_disk_usage", lambda: read_disk_usage_percent(disk_usage_path)
+    )
     _probe_metric(metrics, errors, "io_wait_percent", "rpi_io_wait", read_io_wait_percent)
 
     if errors:
@@ -107,11 +110,11 @@ def read_io_wait_percent() -> float:
 
 
 def _probe_metric(
-    metrics: dict[str, float],
+    metrics: dict[str, Any],
     errors: list[dict[str, str]],
     metric_name: str,
     sensor_name: str,
-    reader,
+    reader: Callable[[], float],
 ) -> None:
     try:
         metrics[metric_name] = reader()

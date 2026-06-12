@@ -1,0 +1,4 @@
+# Debian package versions are intentionally inherited from the selected
+# python:3.11-slim-bookworm base image and Raspberry Pi OS package indexes.
+ignored:
+  - DL3008
