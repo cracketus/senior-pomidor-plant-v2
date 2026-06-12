@@ -86,7 +86,13 @@ def test_http_photo_sender_preserves_pending_on_failure(tmp_path) -> None:
 
 
 def test_http_photo_sender_disabled_returns_zero(tmp_path) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "PHOTO_UPLOAD_ENABLED": "false", "CAMERA_STORAGE_DIR": str(tmp_path)})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "PHOTO_UPLOAD_ENABLED": "false",
+            "CAMERA_STORAGE_DIR": str(tmp_path),
+        }
+    )
 
     assert HttpPhotoSender(settings).send_pending() == 0
 

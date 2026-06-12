@@ -1,0 +1,8 @@
+title = "Senior Pomidor gitleaks configuration"
+
+[allowlist]
+description = "Repository examples and documentation may contain placeholder tokens only."
+paths = [
+    '''README\.md''',
+    '''\.env\.example''',
+]

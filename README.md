@@ -225,6 +225,27 @@ Run tests:
 pytest -q
 ```
 
+Run the code quality harness locally:
+
+```bash
+python -m pip install -r requirements-dev.txt
+ruff format --check .
+ruff check .
+mypy src
+pip-audit --cache-dir .cache/pip-audit -r requirements.txt
+pip-audit --cache-dir .cache/pip-audit -r requirements-hardware.txt
+```
+
+Shell, Docker, and secret hygiene checks used by CI:
+
+```bash
+shellcheck scripts/setup_raspberry_pi.sh
+docker compose config
+docker compose -f docker-compose.mock.yml config
+hadolint Dockerfile
+gitleaks detect --source . --no-git
+```
+
 Run a single mock telemetry tick on Windows PowerShell:
 
 ```powershell

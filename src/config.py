@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 import platform as platform_module
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
-
-try:
-    from dotenv import load_dotenv
-except ImportError:  # pragma: no cover - dependency is optional for tests/imports
-    load_dotenv = None
 
 
 class ConfigError(ValueError):
@@ -71,8 +67,7 @@ class Settings:
 
 def load_config(env: Mapping[str, str] | None = None, platform_name: str | None = None) -> Settings:
     if env is None:
-        if load_dotenv is not None:
-            load_dotenv()
+        _load_dotenv_file()
         env = os.environ
     platform_name = platform_name or platform_module.system()
 
@@ -147,6 +142,16 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
 
 def mqtt_topic(settings: Settings) -> str:
     return f"{settings.mqtt_topic_prefix}/{settings.device_id}/telemetry"
+
+
+def _load_dotenv_file() -> None:
+    try:
+        dotenv = importlib.import_module("dotenv")
+    except ImportError:
+        return
+    load_dotenv = getattr(dotenv, "load_dotenv", None)
+    if callable(load_dotenv):
+        load_dotenv()
 
 
 def _required(env: Mapping[str, str], key: str) -> str:
@@ -249,7 +254,4 @@ def _validate_platform_mode(mock_sensors: bool, platform_name: str) -> None:
     if mock_sensors:
         return
     if platform_name.lower() != "linux":
-        raise ConfigError(
-            "Real sensor mode is only supported on Linux/Raspberry Pi. "
-            "Set MOCK_SENSORS=true on Windows."
-        )
+        raise ConfigError("Real sensor mode is only supported on Linux/Raspberry Pi. Set MOCK_SENSORS=true on Windows.")

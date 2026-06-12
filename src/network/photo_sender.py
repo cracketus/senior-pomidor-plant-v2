@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from src.config import Settings
 from src.utils.camera import PHOTO_SCHEMA_VERSION, PhotoRecord, list_pending_photos, mark_photo_uploaded
@@ -66,7 +67,10 @@ class HttpPhotoSender:
                     timeout=self.settings.http_timeout_seconds,
                 )
             if not _is_success(response):
-                self.logger.error("HTTP photo upload failed with status %s", getattr(response, "status_code", "unknown"))
+                self.logger.error(
+                    "HTTP photo upload failed with status %s",
+                    getattr(response, "status_code", "unknown"),
+                )
                 return False
             mark_photo_uploaded(record)
             self.logger.info("HTTP photo uploaded: %s", record.image_path)
@@ -88,6 +92,6 @@ def _is_success(response: Any) -> bool:
         return 200 <= status_code <= 299
     try:
         response.raise_for_status()
-    except Exception:
+    except Exception:  # noqa: BLE001 - response compatibility fallback
         return False
     return True

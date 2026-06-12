@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from .base_sensor import error_reading, round_metric
 
-
 CHANNEL_MAP = {"A0": "A0", "A1": "A1", "A2": "A2", "A3": "A3"}
 
 
