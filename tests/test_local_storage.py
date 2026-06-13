@@ -3,7 +3,13 @@ import os
 from datetime import UTC, datetime
 
 from src.config import load_config
-from src.utils.local_storage import cleanup_storage, save_payload
+from src.utils.local_storage import (
+    cleanup_storage,
+    delete_payload_file,
+    list_pending_payloads,
+    load_payload_file,
+    save_payload,
+)
 
 
 def test_save_payload_writes_json_file(tmp_path) -> None:
@@ -54,3 +60,38 @@ def test_cleanup_storage_limits_total_size(tmp_path) -> None:
 
     assert not old_file.exists()
     assert new_file.exists()
+
+
+def test_list_pending_payloads_returns_oldest_first(tmp_path) -> None:
+    settings = load_config({"MQTT_HOST": "core.local", "LOCAL_STORAGE_DIR": str(tmp_path)})
+    old_file = tmp_path / "old.json"
+    new_file = tmp_path / "new.json"
+    old_file.write_text("{}", encoding="utf-8")
+    new_file.write_text("{}", encoding="utf-8")
+    os.utime(old_file, (1, 1))
+    os.utime(new_file, (2, 2))
+
+    assert list_pending_payloads(settings) == [old_file, new_file]
+
+
+def test_load_payload_file_returns_payload(tmp_path) -> None:
+    payload_file = tmp_path / "payload.json"
+    payload_file.write_text('{"hello":"world"}', encoding="utf-8")
+
+    assert load_payload_file(payload_file) == {"hello": "world"}
+
+
+def test_load_payload_file_returns_none_for_invalid_json(tmp_path) -> None:
+    payload_file = tmp_path / "payload.json"
+    payload_file.write_text("{invalid", encoding="utf-8")
+
+    assert load_payload_file(payload_file) is None
+
+
+def test_delete_payload_file_removes_file(tmp_path) -> None:
+    payload_file = tmp_path / "payload.json"
+    payload_file.write_text("{}", encoding="utf-8")
+
+    delete_payload_file(payload_file)
+
+    assert not payload_file.exists()

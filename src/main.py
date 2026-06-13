@@ -13,8 +13,10 @@ from src.network.photo_sender import HttpPhotoSender
 from src.sensors import adc_ads1115, air_bme280, ina219, ir_mlx90615, light_bh1750, rpi_core, temp_ds18b20
 from src.utils.camera import capture_photo
 from src.utils.formatter import format_payload
-from src.utils.local_storage import save_payload
+from src.utils.local_storage import delete_payload_file, list_pending_payloads, load_payload_file, save_payload
 from src.utils.logger import configure_logger
+
+TELEMETRY_REPLAY_BATCH_SIZE = 10
 
 
 def collect_readings(settings: Settings) -> dict[str, Any]:
@@ -100,12 +102,13 @@ def run(
     )
     while True:
         tick += 1
+        _replay_pending_telemetry(settings, mqtt_sender, http_sender, logger=logger)
         readings = collect_readings(settings)
         payload = format_payload(settings, readings)
-        save_payload(settings, payload, logger=logger)
-        delivered = mqtt_sender.publish(payload)
-        if not delivered and settings.http_enabled:
-            http_sender.send(payload)
+        saved_path = save_payload(settings, payload, logger=logger)
+        delivered = _deliver_telemetry(settings, payload, mqtt_sender, http_sender)
+        if delivered and saved_path is not None:
+            delete_payload_file(saved_path, logger=logger)
 
         if settings.camera_enabled:
             now = monotonic()
@@ -125,6 +128,38 @@ def run(
             logger.info("Stopping after MAX_TICKS=%s", settings.max_ticks)
             return
         sleep(settings.poll_interval_seconds)
+
+
+def _replay_pending_telemetry(
+    settings: Settings,
+    mqtt_sender: MqttSender,
+    http_sender: HttpSender,
+    *,
+    logger: Any,
+) -> int:
+    delivered_count = 0
+    for path in list_pending_payloads(settings)[:TELEMETRY_REPLAY_BATCH_SIZE]:
+        payload = load_payload_file(path, logger=logger)
+        if payload is None:
+            continue
+        if not _deliver_telemetry(settings, payload, mqtt_sender, http_sender):
+            logger.error("Queued telemetry delivery failed; replay will retry later: %s", path)
+            break
+        delete_payload_file(path, logger=logger)
+        delivered_count += 1
+    return delivered_count
+
+
+def _deliver_telemetry(
+    settings: Settings,
+    payload: dict[str, Any],
+    mqtt_sender: MqttSender,
+    http_sender: HttpSender,
+) -> bool:
+    delivered = mqtt_sender.publish(payload)
+    if not delivered and settings.http_enabled:
+        delivered = http_sender.send(payload)
+    return delivered
 
 
 def main() -> int:

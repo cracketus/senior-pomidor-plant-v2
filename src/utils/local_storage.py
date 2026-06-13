@@ -60,6 +60,35 @@ def cleanup_storage(storage_dir: Path, max_age_days: int, max_size_mb: int) -> N
         total_bytes -= size
 
 
+def list_pending_payloads(settings: Settings) -> list[Path]:
+    storage_dir = Path(settings.local_storage_dir)
+    if not storage_dir.exists():
+        return []
+    return sorted(storage_dir.glob("*.json"), key=lambda path: path.stat().st_mtime)
+
+
+def load_payload_file(path: Path, logger: logging.Logger | None = None) -> dict[str, Any] | None:
+    logger = logger or logging.getLogger(__name__)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 - corrupt queue files should not stop the app
+        logger.error("Queued telemetry file could not be read: %s: %s", path, exc)
+        return None
+    if not isinstance(payload, dict):
+        logger.error("Queued telemetry file does not contain a JSON object: %s", path)
+        return None
+    return payload
+
+
+def delete_payload_file(path: Path, logger: logging.Logger | None = None) -> None:
+    logger = logger or logging.getLogger(__name__)
+    try:
+        path.unlink(missing_ok=True)
+        logger.info("Queued telemetry removed after delivery: %s", path)
+    except Exception as exc:  # noqa: BLE001 - cleanup failure should not stop telemetry
+        logger.error("Queued telemetry delete failed: %s: %s", path, exc)
+
+
 def _payload_filename(device_id: str, payload: dict[str, Any]) -> str:
     timestamp = str(payload.get("timestamp_utc") or datetime.now(UTC).isoformat(timespec="seconds"))
     return f"{_safe_name(timestamp)}_{_safe_name(device_id)}.json"
