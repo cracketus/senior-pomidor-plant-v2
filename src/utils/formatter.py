@@ -82,7 +82,7 @@ def _format_system_health(readings: Any) -> dict[str, Any]:
     return result
 
 
-def _merge_health_metrics(reading: Any, metrics: dict[str, float], errors: list[dict[str, str]]) -> None:
+def _merge_health_metrics(reading: Any, metrics: dict[str, Any], errors: list[dict[str, str]]) -> None:
     if not isinstance(reading, dict):
         return
     error = reading.get("error")
@@ -109,7 +109,9 @@ def _merge_health_metrics(reading: Any, metrics: dict[str, float], errors: list[
     for key, value in reading.items():
         if key == "errors":
             continue
-        if isinstance(value, (int, float)):
+        if isinstance(value, bool) or (isinstance(value, int) and key.endswith(("_bytes", "_count"))):
+            metrics[key] = value
+        elif isinstance(value, (int, float)):
             metrics[key] = float(value)
 
 
