@@ -356,6 +356,23 @@ CAMERA_RESOLUTION=1920x1080
 
 ## Hardware Discovery and Troubleshooting
 
+Test only selected sensors without starting MQTT, storage, camera capture, or the main application loop:
+
+```bash
+docker compose build senior-pomidor-edge
+docker compose run --rm --no-deps senior-pomidor-edge \
+  python scripts/test_sensors.py bme280-pod1 bh1750 --repeat 3 --interval 1
+```
+
+Use `all` to test every configured sensor, or list the available names:
+
+```bash
+docker compose run --rm --no-deps senior-pomidor-edge python scripts/test_sensors.py --list
+docker compose run --rm --no-deps senior-pomidor-edge python scripts/test_sensors.py all
+```
+
+The command reads sensor addresses, ADS1115 calibration, DS18B20 ROM IDs, and `MOCK_SENSORS` from `.env`. Each result is marked `ok` or `error`, and the command exits with status `1` if any selected sensor fails. Add `--mock` to verify the command without hardware.
+
 Start with a single hardware tick and the latest saved telemetry file. This shows both numeric values and isolated sensor errors:
 
 ```bash

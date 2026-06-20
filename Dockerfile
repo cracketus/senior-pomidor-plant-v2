@@ -22,5 +22,6 @@ RUN if [ "$INSTALL_HARDWARE_DEPS" = "true" ]; then \
     fi
 
 COPY src ./src
+COPY scripts ./scripts
 
 CMD ["python", "-m", "src.main"]
