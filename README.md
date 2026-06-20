@@ -73,6 +73,7 @@ Important variables:
 - `MQTT_HOST`, `MQTT_PORT`, `MQTT_TOPIC_PREFIX`: primary delivery settings.
 - `HTTP_ENABLED`, `CORE_HTTP_URL`: optional fallback sender settings.
 - `LOCAL_STORAGE_DIR`: directory where local telemetry JSON files are stored.
+- `LOCAL_EVENT_DIR`: directory where queued lifecycle event JSON files are stored.
 - `LOCAL_STORAGE_MAX_AGE_DAYS`: maximum age of local telemetry files before cleanup.
 - `LOCAL_STORAGE_MAX_SIZE_MB`: maximum disk space used by local telemetry files.
 - `CAMERA_ENABLED`: set to `true` on Raspberry Pi when the camera should capture photos.
@@ -88,6 +89,12 @@ MQTT publishes one JSON payload per tick to:
 
 ```text
 {MQTT_TOPIC_PREFIX}/{DEVICE_ID}/telemetry
+```
+
+Planned maintenance lifecycle events publish to:
+
+```text
+{MQTT_TOPIC_PREFIX}/{DEVICE_ID}/events
 ```
 
 ## Payload Shape
@@ -167,11 +174,30 @@ Retention is controlled by:
 
 ```env
 LOCAL_STORAGE_DIR=data/telemetry
+LOCAL_EVENT_DIR=data/events
 LOCAL_STORAGE_MAX_AGE_DAYS=30
 LOCAL_STORAGE_MAX_SIZE_MB=256
 ```
 
 Cleanup runs after each saved payload. Files older than the configured age are removed first; if the directory still exceeds the configured size, the oldest remaining files are removed until the directory is below the limit.
+
+## Planned Maintenance Events
+
+Use explicit lifecycle events when intentionally shutting down the Raspberry Pi edge node for sensor service or planned maintenance. Before stopping the container or powering down the Pi, run:
+
+```bash
+python scripts/maintenance_event.py start --reason "sensor service"
+```
+
+After the Pi and edge service are back, run:
+
+```bash
+python scripts/maintenance_event.py complete --reason "sensor service"
+```
+
+The event payload uses schema version `senior-pomidor.edge.event.v1` and includes `event_id`, `device_id`, `event_type`, `timestamp_utc`, `source`, and optional `reason`. Supported event types are `maintenance_started` and `maintenance_completed`.
+
+If the MQTT broker or Core server is unavailable, the event is queued locally under `LOCAL_EVENT_DIR` and retried the next time the maintenance event command runs.
 
 Camera photos are saved locally before upload. By default, Docker stores them on the Raspberry Pi host at:
 

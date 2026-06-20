@@ -31,6 +31,7 @@ class Settings:
     core_http_url: str | None
     http_timeout_seconds: float
     local_storage_dir: str
+    local_event_dir: str
     local_storage_max_age_days: int
     local_storage_max_size_mb: int
     camera_enabled: bool
@@ -99,6 +100,7 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
         core_http_url=core_http_url,
         http_timeout_seconds=_float(env, "HTTP_TIMEOUT_SECONDS", 5.0, minimum=0.1),
         local_storage_dir=_string(env, "LOCAL_STORAGE_DIR", "data/telemetry"),
+        local_event_dir=_string(env, "LOCAL_EVENT_DIR", "data/events"),
         local_storage_max_age_days=_int(env, "LOCAL_STORAGE_MAX_AGE_DAYS", 30, minimum=1),
         local_storage_max_size_mb=_int(env, "LOCAL_STORAGE_MAX_SIZE_MB", 256, minimum=1),
         camera_enabled=_bool(env, "CAMERA_ENABLED", False),
@@ -142,6 +144,10 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
 
 def mqtt_topic(settings: Settings) -> str:
     return f"{settings.mqtt_topic_prefix}/{settings.device_id}/telemetry"
+
+
+def mqtt_event_topic(settings: Settings) -> str:
+    return f"{settings.mqtt_topic_prefix}/{settings.device_id}/events"
 
 
 def _load_dotenv_file() -> None:

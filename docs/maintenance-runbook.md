@@ -54,6 +54,14 @@ mkdir -p data/backups
 cp .env "data/backups/.env.$(date -u +%Y%m%dT%H%M%SZ)"
 ```
 
+Emit the planned maintenance start event before stopping the container, rebooting, powering down, or servicing sensors:
+
+```bash
+python scripts/maintenance_event.py start --reason "monthly sensor service"
+```
+
+If the command exits with code `1`, the event was saved locally and will be retried the next time a maintenance event command runs. Do not treat that as a blocker when the maintenance window itself is intentional.
+
 ## OS Updates
 
 Refresh package metadata and inspect available upgrades:
@@ -155,6 +163,12 @@ docker compose logs -f senior-pomidor-edge
 ```
 
 Stop following logs with `Ctrl+C`; this does not stop the container.
+
+Emit the planned maintenance completion event after the edge service is healthy again:
+
+```bash
+python scripts/maintenance_event.py complete --reason "monthly sensor service"
+```
 
 ## Rollback And Recovery
 

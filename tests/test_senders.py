@@ -1,6 +1,7 @@
 import json
 
 from src.config import load_config
+from src.network.event_sender import MqttEventSender
 from src.network.http_sender import HttpSender
 from src.network.mqtt_sender import MqttSender
 from src.network.photo_sender import HttpPhotoSender
@@ -12,6 +13,25 @@ def test_mqtt_sender_returns_false_on_client_failure() -> None:
     sender = MqttSender(settings, client_factory=lambda: FailingMqttClient())
 
     assert sender.publish({"hello": "world"}) is False
+
+
+def test_mqtt_event_sender_publishes_to_events_topic() -> None:
+    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01", "MQTT_TOPIC_PREFIX": "plants"})
+    client = CapturingMqttClient()
+    sender = MqttEventSender(settings, client_factory=lambda: client)
+
+    assert sender.publish({"event_type": "maintenance_started"}) is True
+
+    assert client.published[0]["topic"] == "plants/edge-01/events"
+    assert client.published[0]["qos"] == 1
+    assert json.loads(client.published[0]["payload"]) == {"event_type": "maintenance_started"}
+
+
+def test_mqtt_event_sender_returns_false_on_client_failure() -> None:
+    settings = load_config({"MQTT_HOST": "core.local"})
+    sender = MqttEventSender(settings, client_factory=lambda: FailingMqttClient())
+
+    assert sender.publish({"event_type": "maintenance_started"}) is False
 
 
 def test_http_sender_disabled_returns_false() -> None:
@@ -100,6 +120,26 @@ def test_http_photo_sender_disabled_returns_zero(tmp_path) -> None:
 class FailingMqttClient:
     def connect(self, *_args, **_kwargs):
         raise OSError("network unavailable")
+
+
+class CapturingMqttClient:
+    def __init__(self) -> None:
+        self.published = []
+
+    def connect(self, *_args, **_kwargs):
+        return None
+
+    def publish(self, topic, payload, qos, retain):
+        self.published.append({"topic": topic, "payload": payload, "qos": qos, "retain": retain})
+        return PublishInfo()
+
+    def disconnect(self):
+        return None
+
+
+class PublishInfo:
+    def wait_for_publish(self, timeout):
+        self.timeout = timeout
 
 
 class Response:
