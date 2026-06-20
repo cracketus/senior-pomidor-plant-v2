@@ -1,6 +1,6 @@
 import pytest
 
-from src.config import ConfigError, load_config, mqtt_topic
+from src.config import ConfigError, load_config, mqtt_event_topic, mqtt_topic
 
 
 def test_config_requires_mqtt_host() -> None:
@@ -26,6 +26,7 @@ def test_config_parses_types_and_topic() -> None:
     assert settings.ads1115_address == 0x48
     assert settings.mqtt_port == 1884
     assert mqtt_topic(settings) == "plants/edge-01/telemetry"
+    assert mqtt_event_topic(settings) == "plants/edge-01/events"
 
 
 def test_config_parses_local_storage_settings() -> None:
@@ -33,6 +34,7 @@ def test_config_parses_local_storage_settings() -> None:
         {
             "MQTT_HOST": "core.local",
             "LOCAL_STORAGE_DIR": "/var/lib/senior-pomidor/telemetry",
+            "LOCAL_EVENT_DIR": "/var/lib/senior-pomidor/events",
             "LOCAL_STORAGE_MAX_AGE_DAYS": "14",
             "LOCAL_STORAGE_MAX_SIZE_MB": "128",
         },
@@ -40,6 +42,7 @@ def test_config_parses_local_storage_settings() -> None:
     )
 
     assert settings.local_storage_dir == "/var/lib/senior-pomidor/telemetry"
+    assert settings.local_event_dir == "/var/lib/senior-pomidor/events"
     assert settings.local_storage_max_age_days == 14
     assert settings.local_storage_max_size_mb == 128
 
