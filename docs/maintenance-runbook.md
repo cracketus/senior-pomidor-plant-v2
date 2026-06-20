@@ -148,6 +148,28 @@ ls -lt data/telemetry | head
 ls -lt data/photos | head
 ```
 
+Inspect the latest telemetry payload and verify the storage health fields under `system_health.rpi_core`:
+
+- `filesystem_read_only` must be `false`.
+- `disk_free_bytes` and `disk_free_percent` must leave enough headroom for telemetry and photos.
+- `telemetry_buffer_file_count` / `telemetry_buffer_size_bytes` show queued telemetry growth.
+- `photo_buffer_file_count` / `photo_buffer_size_bytes` show retained photo growth.
+- `recent_io_error_count` should normally be `0`.
+
+If `system_health.errors` contains `rpi_recent_io_errors`, the container cannot read the kernel journal. Check the host directly:
+
+```bash
+journalctl --dmesg --since "-1 hour" --no-pager | grep -Ei 'I/O error|Buffer I/O error|EXT[234]-fs error|mmc.*error|read-only file system|blk_update_request'
+```
+
+If the filesystem is read-only or I/O errors are present, stop writes before troubleshooting or replacing the MicroSD card:
+
+```bash
+findmnt -no TARGET,OPTIONS /
+df -h /
+sudo dmesg --level=err,crit,alert,emerg
+```
+
 Confirm hardware paths are still visible:
 
 ```bash
