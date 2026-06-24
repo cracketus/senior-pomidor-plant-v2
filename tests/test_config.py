@@ -18,12 +18,14 @@ def test_config_parses_types_and_topic() -> None:
             "MQTT_PORT": "1884",
             "MQTT_TOPIC_PREFIX": "plants",
             "ADS1115_ADDRESS": "0x48",
+            "BME280_ADDRESS": "0x75",
             "HTTP_ENABLED": "false",
         }
     )
 
     assert settings.mock_sensors is True
     assert settings.ads1115_address == 0x48
+    assert settings.bme280_address == 0x75
     assert settings.mqtt_port == 1884
     assert mqtt_topic(settings) == "plants/edge-01/telemetry"
     assert mqtt_event_topic(settings) == "plants/edge-01/events"
@@ -173,6 +175,12 @@ def test_config_keeps_legacy_ads1115_voltage_env_names_as_aliases() -> None:
 
     assert settings.ads1115_pod1_dry_reading == 17736
     assert settings.ads1115_pod1_wet_reading == 7220
+
+
+def test_config_keeps_legacy_bme280_pod1_address_as_alias() -> None:
+    settings = load_config({"MQTT_HOST": "core.local", "BME280_POD1_ADDRESS": "0x75"})
+
+    assert settings.bme280_address == 0x75
 
 
 def test_config_rejects_all_pods_disabled() -> None:

@@ -48,8 +48,7 @@ class Settings:
     photo_upload_url: str | None
     photo_upload_token: str | None
     ads1115_address: int
-    bme280_pod1_address: int
-    bme280_pod2_address: int
+    bme280_address: int
     bh1750_address: int
     mlx90615_address: int
     ina219_address: int
@@ -117,8 +116,7 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
         photo_upload_url=photo_upload_url,
         photo_upload_token=_optional(env, "PHOTO_UPLOAD_TOKEN"),
         ads1115_address=_int(env, "ADS1115_ADDRESS", 0x48, minimum=0),
-        bme280_pod1_address=_int(env, "BME280_POD1_ADDRESS", 0x76, minimum=0),
-        bme280_pod2_address=_int(env, "BME280_POD2_ADDRESS", 0x77, minimum=0),
+        bme280_address=_int_alias(env, "BME280_ADDRESS", "BME280_POD1_ADDRESS", 0x76, minimum=0),
         bh1750_address=_int(env, "BH1750_ADDRESS", 0x23, minimum=0),
         mlx90615_address=_int(env, "MLX90615_ADDRESS", 0x5A, minimum=0),
         ina219_address=_int(env, "INA219_ADDRESS", 0x40, minimum=0),
@@ -231,6 +229,19 @@ def _float_alias(env: Mapping[str, str], key: str, legacy_key: str, default: flo
     if _optional(env, key) is not None:
         return _float(env, key, default)
     return _float(env, legacy_key, default)
+
+
+def _int_alias(
+    env: Mapping[str, str],
+    key: str,
+    legacy_key: str,
+    default: int,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
+    if _optional(env, key) is not None:
+        return _int(env, key, default, minimum, maximum)
+    return _int(env, legacy_key, default, minimum, maximum)
 
 
 def _channel(env: Mapping[str, str], key: str, default: str) -> str:

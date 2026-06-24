@@ -23,8 +23,7 @@ SensorReader = Callable[[], dict[str, Any]]
 SENSOR_NAMES = (
     "ads1115-pod1",
     "ads1115-pod2",
-    "bme280-pod1",
-    "bme280-pod2",
+    "bme280",
     "ds18b20-pod1",
     "ds18b20-pod2",
     "bh1750",
@@ -83,11 +82,8 @@ def build_readers(env: Mapping[str, str], *, mock: bool) -> dict[str, SensorRead
             mock=mock,
             pod_index=2,
         ),
-        "bme280-pod1": lambda: air_bme280.read(
-            address=env_int(env, "BME280_POD1_ADDRESS", 0x76), mock=mock, pod_index=1
-        ),
-        "bme280-pod2": lambda: air_bme280.read(
-            address=env_int(env, "BME280_POD2_ADDRESS", 0x77), mock=mock, pod_index=2
+        "bme280": lambda: air_bme280.read(
+            address=env_int_alias(env, "BME280_ADDRESS", "BME280_POD1_ADDRESS", 0x76), mock=mock
         ),
         "ds18b20-pod1": lambda: temp_ds18b20.read(rom_id=env_optional(env, "DS18B20_POD1_ROM"), mock=mock, pod_index=1),
         "ds18b20-pod2": lambda: temp_ds18b20.read(rom_id=env_optional(env, "DS18B20_POD2_ROM"), mock=mock, pod_index=2),
@@ -154,6 +150,12 @@ def env_float(env: Mapping[str, str], key: str, default: float) -> float:
         return default if value is None else float(value)
     except ValueError as exc:
         raise ValueError(f"{key} must be a number") from exc
+
+
+def env_int_alias(env: Mapping[str, str], key: str, legacy_key: str, default: int) -> int:
+    if env_optional(env, key) is not None:
+        return env_int(env, key, default)
+    return env_int(env, legacy_key, default)
 
 
 def env_bool(env: Mapping[str, str], key: str, default: bool) -> bool:
