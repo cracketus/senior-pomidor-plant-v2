@@ -5,33 +5,33 @@ from scripts import test_sensors
 
 def test_run_readers_reports_success(capsys) -> None:
     readers = {
-        "bme280-pod1": lambda: {"air_temperature_c": 23.5},
+        "bme280": lambda: {"air_temperature_c": 23.5},
         "bh1750": lambda: {"light_lux": 1200.0},
     }
 
     result = test_sensors.run_readers(
         readers,
-        ["bme280-pod1", "bh1750"],
+        ["bme280", "bh1750"],
         repeat=1,
         interval=0,
     )
 
     output = json.loads(capsys.readouterr().out)
     assert result == 0
-    assert output["results"]["bme280-pod1"]["status"] == "ok"
+    assert output["results"]["bme280"]["status"] == "ok"
     assert output["results"]["bh1750"]["reading"]["light_lux"] == 1200.0
 
 
 def test_run_readers_returns_one_when_sensor_reports_error(capsys) -> None:
     readers = {
-        "bme280-pod1": lambda: {"error": {"sensor": "bme280", "message": "not detected"}},
+        "bme280": lambda: {"error": {"sensor": "bme280", "message": "not detected"}},
     }
 
-    result = test_sensors.run_readers(readers, ["bme280-pod1"], repeat=1, interval=0)
+    result = test_sensors.run_readers(readers, ["bme280"], repeat=1, interval=0)
 
     output = json.loads(capsys.readouterr().out)
     assert result == 1
-    assert output["results"]["bme280-pod1"]["status"] == "error"
+    assert output["results"]["bme280"]["status"] == "error"
 
 
 def test_run_readers_repeats_and_sleeps_between_cycles(capsys) -> None:
@@ -57,10 +57,23 @@ def test_build_readers_uses_environment_configuration(monkeypatch) -> None:
         "read",
         lambda **kwargs: captured.update(kwargs) or {"air_temperature_c": 22.0},
     )
+    readers = test_sensors.build_readers({"BME280_ADDRESS": "0x75"}, mock=False)
+
+    assert readers["bme280"]() == {"air_temperature_c": 22.0}
+    assert captured == {"address": 0x75, "mock": False}
+
+
+def test_build_readers_keeps_legacy_bme280_pod1_address_as_alias(monkeypatch) -> None:
+    captured = {}
+    monkeypatch.setattr(
+        test_sensors.air_bme280,
+        "read",
+        lambda **kwargs: captured.update(kwargs) or {"air_temperature_c": 22.0},
+    )
     readers = test_sensors.build_readers({"BME280_POD1_ADDRESS": "0x75"}, mock=False)
 
-    assert readers["bme280-pod1"]() == {"air_temperature_c": 22.0}
-    assert captured == {"address": 0x75, "mock": False, "pod_index": 1}
+    assert readers["bme280"]() == {"air_temperature_c": 22.0}
+    assert captured == {"address": 0x75, "mock": False}
 
 
 def test_env_bool_rejects_invalid_value() -> None:

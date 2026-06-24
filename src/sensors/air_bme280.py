@@ -5,13 +5,13 @@ from __future__ import annotations
 from .base_sensor import error_reading, round_metric
 
 
-def read(address: int, mock: bool = False, pod_index: int = 1) -> dict[str, float] | dict[str, dict[str, str]]:
+def read(address: int, mock: bool = False, pod_index: int | None = None) -> dict[str, float] | dict[str, dict[str, str]]:
     try:
         if mock:
             return {
-                "air_temperature_c": 23.6 + pod_index * 0.4,
-                "air_humidity_percent": 57.0 + pod_index,
-                "air_pressure_hpa": 1007.5 + pod_index,
+                "air_temperature_c": 24.0,
+                "air_humidity_percent": 58.0,
+                "air_pressure_hpa": 1008.5,
             }
         return _read_hardware(address)
     except Exception as exc:  # noqa: BLE001 - sensor isolation boundary
