@@ -31,7 +31,7 @@ If `MOCK_SENSORS` is omitted, the app defaults to mock mode on non-Linux platfor
 | Sensor | Protocol | Address / Pin | Measurement |
 | --- | --- | --- | --- |
 | ADS1115 | I2C | `0x48`, channels `A0`, `A1` | Capacitive soil moisture raw ADC reading, calibrated to percent |
-| BME280 x2 | I2C | `0x76`, `0x77` | Air temperature, humidity, pressure |
+| BME280 | I2C | `0x76` | Shared air temperature, humidity, pressure for both pods |
 | BH1750 | I2C | `0x23` | Illuminance in lux |
 | MLX90615 | I2C / SMBus | `0x5A` | Non-contact leaf temperature |
 | DS18B20 x2 | 1-Wire | ROM IDs from `.env` | Soil temperature |
@@ -371,7 +371,7 @@ Test only selected sensors without starting MQTT, storage, camera capture, or th
 ```bash
 docker compose build senior-pomidor-edge
 docker compose run --rm --no-deps senior-pomidor-edge \
-  python scripts/test_sensors.py bme280-pod1 bh1750 --repeat 3 --interval 1
+  python scripts/test_sensors.py bme280 bh1750 --repeat 3 --interval 1
 ```
 
 Use `all` to test every configured sensor, or list the available names:
@@ -416,8 +416,7 @@ Expected addresses:
 | Device | Expected address | `.env` setting |
 | --- | --- | --- |
 | ADS1115 | `0x48` | `ADS1115_ADDRESS=0x48` |
-| BME280 Pod 1 | `0x76` | `BME280_POD1_ADDRESS=0x76` |
-| BME280 Pod 2 | `0x77` | `BME280_POD2_ADDRESS=0x77` |
+| BME280 | `0x76` | `BME280_ADDRESS=0x76` |
 | BH1750 | `0x23` | `BH1750_ADDRESS=0x23` |
 | MLX90615 / MLX90614-compatible | `0x5A` | `MLX90615_ADDRESS=0x5A` |
 | INA219 | `0x40` | `INA219_ADDRESS=0x40` |
@@ -468,7 +467,7 @@ WIFI_INTERFACE=wlan0
 - Verify I2C is enabled with `sudo raspi-config` or by checking `/boot/firmware/config.txt` for `dtparam=i2c_arm=on`.
 - Verify 1-Wire is enabled by checking for `dtoverlay=w1-gpio` and `/sys/bus/w1/devices/28-*`.
 - Confirm power, ground, SDA, and SCL wiring. I2C needs common ground and the correct 3.3 V logic level.
-- Check for address conflicts. Two BME280 boards on the same bus must use different addresses, normally `0x76` and `0x77`.
+- Check for address conflicts. The single shared BME280 normally uses `0x76`; if your board is strapped to `0x77`, set `BME280_ADDRESS=0x77`.
 - Run `sudo i2cdetect -y 1` on the host, not inside a broken container first. If the host cannot see the address, the app cannot read it.
 - For Docker hardware mode, use `docker-compose.yml`, not `docker-compose.mock.yml`. The hardware compose file passes through I2C, camera, 1-Wire, `/sys`, and host networking.
 - Rebuild after dependency changes: `docker compose up --build -d`.

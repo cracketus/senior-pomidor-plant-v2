@@ -24,6 +24,7 @@ def collect_readings(settings: Settings) -> dict[str, Any]:
         "pod_1": _collect_pod_readings(settings, pod_index=1) if settings.pod1_enabled else None,
         "pod_2": _collect_pod_readings(settings, pod_index=2) if settings.pod2_enabled else None,
         "shared": {
+            "air": air_bme280.read(address=settings.bme280_address, mock=settings.mock_sensors),
             "light": light_bh1750.read(address=settings.bh1750_address, mock=settings.mock_sensors),
             "leaf_temperature": ir_mlx90615.read(address=settings.mlx90615_address, mock=settings.mock_sensors),
         },
@@ -36,13 +37,11 @@ def _collect_pod_readings(settings: Settings, pod_index: int) -> dict[str, Any]:
         channel = settings.ads1115_pod1_channel
         dry_reading = settings.ads1115_pod1_dry_reading
         wet_reading = settings.ads1115_pod1_wet_reading
-        bme280_address = settings.bme280_pod1_address
         ds18b20_rom = settings.ds18b20_pod1_rom
     else:
         channel = settings.ads1115_pod2_channel
         dry_reading = settings.ads1115_pod2_dry_reading
         wet_reading = settings.ads1115_pod2_wet_reading
-        bme280_address = settings.bme280_pod2_address
         ds18b20_rom = settings.ds18b20_pod2_rom
 
     return {
@@ -51,11 +50,6 @@ def _collect_pod_readings(settings: Settings, pod_index: int) -> dict[str, Any]:
             dry_reading=dry_reading,
             wet_reading=wet_reading,
             address=settings.ads1115_address,
-            mock=settings.mock_sensors,
-            pod_index=pod_index,
-        ),
-        "air": air_bme280.read(
-            address=bme280_address,
             mock=settings.mock_sensors,
             pod_index=pod_index,
         ),

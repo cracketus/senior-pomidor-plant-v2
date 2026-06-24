@@ -22,6 +22,22 @@ def test_collect_readings_skips_disabled_pod2() -> None:
     assert readings["system_health"]["pod_1_hardware"]["ina219"]["bus_voltage_v"] == 3.25
 
 
+def test_collect_readings_reads_bme280_once_as_shared_sensor(monkeypatch) -> None:
+    settings = load_config({"MQTT_HOST": "core.local", "MOCK_SENSORS": "true"})
+    calls = []
+
+    def fake_bme280_read(**kwargs):
+        calls.append(kwargs)
+        return {"air_temperature_c": 24.0}
+
+    monkeypatch.setattr("src.main.air_bme280.read", fake_bme280_read)
+
+    readings = collect_readings(settings)
+
+    assert readings["shared"]["air"] == {"air_temperature_c": 24.0}
+    assert calls == [{"address": settings.bme280_address, "mock": True}]
+
+
 def test_run_includes_health_payload(monkeypatch) -> None:
     settings = load_config(
         {

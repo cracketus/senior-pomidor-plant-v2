@@ -11,10 +11,12 @@ def test_formatter_preserves_partial_readings_and_errors() -> None:
         {
             "pod_1": {
                 "soil_moisture": {"soil_moisture_percent": 45.2},
-                "air": {"error": {"sensor": "bme280", "message": "timeout"}},
             },
             "pod_2": {},
-            "shared": {"light": {"light_lux": 12000.0}},
+            "shared": {
+                "air": {"error": {"sensor": "bme280", "message": "timeout"}},
+                "light": {"light_lux": 12000.0},
+            },
             "system_health": {
                 "rpi_core": {
                     "cpu_temp_c": 56.4,
@@ -36,6 +38,7 @@ def test_formatter_preserves_partial_readings_and_errors() -> None:
     assert payload["pods"]["pod_1"]["metrics"]["light_lux"] == 12000.0
     assert payload["pods"]["pod_1"]["errors"] == [{"sensor": "bme280", "message": "timeout"}]
     assert payload["pods"]["pod_2"]["metrics"]["light_lux"] == 12000.0
+    assert payload["pods"]["pod_2"]["errors"] == [{"sensor": "bme280", "message": "timeout"}]
     assert payload["system_health"] == {
         "rpi_core": {
             "cpu_temp_c": 56.4,
