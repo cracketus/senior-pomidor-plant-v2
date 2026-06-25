@@ -18,7 +18,11 @@ def test_formatter_preserves_partial_readings_and_errors() -> None:
                 "light": {"light_lux": 12000.0},
             },
             "system_health": {
-                "rpi_core": {"cpu_temp_c": 56.4, "wifi_rssi_dbm": -68},
+                "rpi_core": {
+                    "cpu_temp_c": 56.4,
+                    "wifi_rssi_dbm": -68,
+                    "filesystem_read_only": False,
+                },
                 "pod_1_hardware": {
                     "ina219": {"bus_voltage_v": 3.25, "bus_current_ma": 12.4},
                 },
@@ -36,7 +40,11 @@ def test_formatter_preserves_partial_readings_and_errors() -> None:
     assert payload["pods"]["pod_2"]["metrics"]["light_lux"] == 12000.0
     assert payload["pods"]["pod_2"]["errors"] == [{"sensor": "bme280", "message": "timeout"}]
     assert payload["system_health"] == {
-        "rpi_core": {"cpu_temp_c": 56.4, "wifi_rssi_dbm": -68.0},
+        "rpi_core": {
+            "cpu_temp_c": 56.4,
+            "wifi_rssi_dbm": -68.0,
+            "filesystem_read_only": False,
+        },
         "pod_1_hardware": {
             "bus_voltage_v": 3.25,
             "bus_current_ma": 12.4,
@@ -84,4 +92,26 @@ def test_formatter_isolates_health_errors() -> None:
             {"sensor": "rpi_wifi_rssi", "message": "RSSI unavailable"},
             {"sensor": "ina219", "message": "i2c timeout"},
         ],
+    }
+
+
+def test_formatter_preserves_storage_counts_bytes_and_status_types() -> None:
+    settings = load_config({"MQTT_HOST": "core.local"})
+    payload = format_payload(
+        settings,
+        {
+            "system_health": {
+                "rpi_core": {
+                    "filesystem_read_only": False,
+                    "disk_free_bytes": 123456,
+                    "telemetry_buffer_file_count": 7,
+                }
+            }
+        },
+    )
+
+    assert payload["system_health"]["rpi_core"] == {
+        "filesystem_read_only": False,
+        "disk_free_bytes": 123456,
+        "telemetry_buffer_file_count": 7,
     }

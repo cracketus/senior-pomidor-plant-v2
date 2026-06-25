@@ -127,6 +127,16 @@ Telemetry payloads use schema version `senior-pomidor.edge.telemetry.v2`:
       "cpu_temp_c": 56.4,
       "wifi_rssi_dbm": -68.0,
       "disk_usage_percent": 34.2,
+      "disk_free_percent": 65.8,
+      "disk_total_bytes": 32000000000,
+      "disk_used_bytes": 10944000000,
+      "disk_free_bytes": 21056000000,
+      "filesystem_read_only": false,
+      "telemetry_buffer_file_count": 3,
+      "telemetry_buffer_size_bytes": 12288,
+      "photo_buffer_file_count": 2,
+      "photo_buffer_size_bytes": 2400000,
+      "recent_io_error_count": 0,
       "io_wait_percent": 1.7
     },
     "pod_1_hardware": {
@@ -473,7 +483,10 @@ WIFI_INTERFACE=wlan0
 - MLX90615/MLX90614 leaf temperature is line-of-sight. Reflective, wet, or off-target leaves can produce surprising values.
 - Wi-Fi RSSI is in dBm. Values around `-30` are strong, around `-70` are weak but usable, and below `-80` are unreliable.
 - CPU temperature is Celsius. Sustained values near throttling range mean the Pi needs better airflow, a heatsink, or lower enclosure temperature.
-- Disk usage and I/O wait come from `psutil`. If disk usage is unexpected, confirm `DISK_USAGE_PATH` points to the mounted data path you care about.
+- Disk total, used, free, and percentage values come from `psutil`. `filesystem_read_only` is derived from the mount options for `DISK_USAGE_PATH`; set that path to the root filesystem or the mounted local-storage filesystem you need to monitor.
+- Telemetry and photo buffer metrics recursively count regular files under `LOCAL_STORAGE_DIR` and `CAMERA_STORAGE_DIR`. Missing directories report zero files and zero bytes.
+- `recent_io_error_count` counts matching MicroSD, block-device, and filesystem errors in the last hour of the kernel journal. If the journal is unavailable to the container, the probe is reported under `system_health.errors`.
+- `io_wait_percent` keeps reporting the current `psutil` CPU I/O-wait measurement.
 
 ### Reading Error Fields
 

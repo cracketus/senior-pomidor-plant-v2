@@ -66,6 +66,8 @@ def _collect_system_health(settings: Settings) -> dict[str, Any]:
         "rpi_core": rpi_core.read(
             wifi_interface=settings.wifi_interface,
             disk_usage_path=settings.disk_usage_path,
+            telemetry_buffer_path=settings.local_storage_dir,
+            photo_buffer_path=settings.camera_storage_dir,
             mock=settings.mock_sensors,
         ),
         "pod_1_hardware": {
