@@ -5,7 +5,9 @@ from __future__ import annotations
 from .base_sensor import error_reading, round_metric
 
 
-def read(address: int, mock: bool = False, pod_index: int | None = None) -> dict[str, float] | dict[str, dict[str, str]]:
+def read(
+    address: int, mock: bool = False, pod_index: int | None = None
+) -> dict[str, float] | dict[str, dict[str, str]]:
     try:
         if mock:
             return {
