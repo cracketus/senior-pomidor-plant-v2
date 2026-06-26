@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://senior-pomidor.local/schemas/edge-photo-v1.schema.json",
+  "title": "Senior Pomidor Edge Photo Metadata v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "photo_id",
+    "device_id",
+    "captured_at_utc",
+    "file_name",
+    "file_size_bytes",
+    "sharpness_score",
+    "attempts",
+    "upload_status",
+    "uploaded_at_utc"
+  ],
+  "properties": {
+    "schema_version": { "const": "senior-pomidor.edge.photo.v1" },
+    "photo_id": { "type": "string", "minLength": 1 },
+    "device_id": { "type": "string", "minLength": 1 },
+    "captured_at_utc": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "file_name": { "type": "string", "minLength": 1 },
+    "file_size_bytes": { "type": "integer", "minimum": 0 },
+    "sharpness_score": { "type": "number", "minimum": 0 },
+    "attempts": { "type": "integer", "minimum": 1 },
+    "upload_status": { "type": "string", "enum": ["pending", "uploaded"] },
+    "uploaded_at_utc": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        }
+      ]
+    }
+  },
+  "additionalProperties": true
+}

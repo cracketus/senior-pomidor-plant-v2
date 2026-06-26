@@ -320,6 +320,10 @@ Operations runbooks:
 
 - [Raspberry Pi 24/7 OS configuration](docs/raspberry-pi-24-7-os.md)
 - [Monthly maintenance and planned restarts](docs/maintenance-runbook.md)
+- [Edge contract policy](docs/contracts.md)
+- [Core integration contract](docs/core-integration.md)
+- [Repository scope and prototype reference](docs/scope-and-prototype-reference.md)
+- [Hardware calibration spec](docs/hardware-calibration-spec.md)
 
 If the script enables I2C or 1-Wire, it will stop and ask for a reboot. Reboot and run the same command again:
 

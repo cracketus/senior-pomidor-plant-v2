@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://senior-pomidor.local/schemas/edge-telemetry-v2.schema.json",
+  "title": "Senior Pomidor Edge Telemetry v2",
+  "type": "object",
+  "required": ["schema_version", "device_id", "timestamp_utc", "pods", "system_health"],
+  "properties": {
+    "schema_version": { "const": "senior-pomidor.edge.telemetry.v2" },
+    "device_id": { "type": "string", "minLength": 1 },
+    "timestamp_utc": { "$ref": "#/$defs/utcTimestamp" },
+    "pods": {
+      "type": "object",
+      "required": ["pod_1", "pod_2"],
+      "properties": {
+        "pod_1": { "$ref": "#/$defs/pod" },
+        "pod_2": { "$ref": "#/$defs/pod" }
+      },
+      "additionalProperties": { "$ref": "#/$defs/pod" }
+    },
+    "system_health": {
+      "type": "object",
+      "required": ["rpi_core", "pod_1_hardware", "errors"],
+      "properties": {
+        "rpi_core": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["number", "integer", "boolean"]
+          }
+        },
+        "pod_1_hardware": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["number", "integer", "boolean"]
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/error" }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "utcTimestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "pod": {
+      "type": "object",
+      "required": ["enabled", "metrics", "errors"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        },
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/error" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "error": {
+      "type": "object",
+      "required": ["sensor", "message"],
+      "properties": {
+        "sensor": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  }
+}
