@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from src.config import Settings
+from src.utils.derived_metrics import add_vpd_metrics
 
 SCHEMA_VERSION = "senior-pomidor.edge.telemetry.v2"
 
@@ -41,6 +42,7 @@ def _format_pod(pod_readings: dict[str, Any] | None, shared_readings: dict[str, 
         _merge_reading(reading, metrics, errors)
     for reading in shared_readings.values():
         _merge_reading(reading, metrics, errors)
+    add_vpd_metrics(metrics)
 
     return {"enabled": True, "metrics": metrics, "errors": errors}
 

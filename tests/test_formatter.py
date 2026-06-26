@@ -64,6 +64,79 @@ def test_formatter_marks_disabled_pod() -> None:
     assert payload["pods"]["pod_2"] == {"enabled": False, "metrics": {}, "errors": []}
 
 
+def test_formatter_adds_vpd_metrics_to_each_enabled_pod() -> None:
+    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
+    payload = format_payload(
+        settings,
+        {
+            "pod_1": {"soil_moisture": {"soil_moisture_percent": 45.2}},
+            "pod_2": {"soil_moisture": {"soil_moisture_percent": 50.1}},
+            "shared": {
+                "air": {
+                    "air_temperature_c": 24.0,
+                    "air_humidity_percent": 58.0,
+                    "air_pressure_hpa": 1008.5,
+                },
+                "leaf_temperature": {"leaf_temp_c": 24.9},
+            },
+        },
+        timestamp=datetime(2026, 6, 6, 10, 0, tzinfo=UTC),
+    )
+
+    for pod_name in ("pod_1", "pod_2"):
+        metrics = payload["pods"][pod_name]["metrics"]
+        assert metrics["air_saturation_vapor_pressure_kpa"] == 2.98
+        assert metrics["air_actual_vapor_pressure_kpa"] == 1.73
+        assert metrics["air_vpd_kpa"] == 1.25
+        assert metrics["leaf_saturation_vapor_pressure_kpa"] == 3.15
+        assert metrics["leaf_vpd_kpa"] == 1.42
+
+
+def test_formatter_adds_only_air_vpd_when_leaf_temperature_is_missing() -> None:
+    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
+    payload = format_payload(
+        settings,
+        {
+            "pod_1": {},
+            "pod_2": None,
+            "shared": {
+                "air": {
+                    "air_temperature_c": 24.0,
+                    "air_humidity_percent": 58.0,
+                },
+            },
+        },
+        timestamp=datetime(2026, 6, 6, 10, 0, tzinfo=UTC),
+    )
+
+    metrics = payload["pods"]["pod_1"]["metrics"]
+    assert metrics["air_saturation_vapor_pressure_kpa"] == 2.98
+    assert metrics["air_actual_vapor_pressure_kpa"] == 1.73
+    assert metrics["air_vpd_kpa"] == 1.25
+    assert "leaf_saturation_vapor_pressure_kpa" not in metrics
+    assert "leaf_vpd_kpa" not in metrics
+
+
+def test_formatter_skips_vpd_when_air_reading_errors() -> None:
+    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
+    payload = format_payload(
+        settings,
+        {
+            "pod_1": {},
+            "pod_2": {},
+            "shared": {
+                "air": {"error": {"sensor": "bme280", "message": "timeout"}},
+                "leaf_temperature": {"leaf_temp_c": 24.9},
+            },
+        },
+        timestamp=datetime(2026, 6, 6, 10, 0, tzinfo=UTC),
+    )
+
+    metrics = payload["pods"]["pod_1"]["metrics"]
+    assert "air_vpd_kpa" not in metrics
+    assert "leaf_vpd_kpa" not in metrics
+
+
 def test_formatter_isolates_health_errors() -> None:
     settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
     payload = format_payload(
