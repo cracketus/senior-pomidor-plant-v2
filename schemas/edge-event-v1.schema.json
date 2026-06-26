@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://senior-pomidor.local/schemas/edge-event-v1.schema.json",
+  "title": "Senior Pomidor Edge Event v1",
+  "type": "object",
+  "required": ["schema_version", "event_id", "device_id", "event_type", "timestamp_utc", "source"],
+  "properties": {
+    "schema_version": { "const": "senior-pomidor.edge.event.v1" },
+    "event_id": { "type": "string", "minLength": 1 },
+    "device_id": { "type": "string", "minLength": 1 },
+    "event_type": {
+      "type": "string",
+      "enum": ["maintenance_started", "maintenance_completed"]
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "source": { "type": "string", "minLength": 1 },
+    "reason": { "type": "string" }
+  },
+  "additionalProperties": true
+}
