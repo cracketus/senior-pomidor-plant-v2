@@ -115,9 +115,14 @@ Telemetry payloads use schema version `senior-pomidor.edge.telemetry.v2`:
         "air_temperature_c": 24.5,
         "air_humidity_percent": 58.2,
         "air_pressure_hpa": 1008.3,
+        "air_saturation_vapor_pressure_kpa": 3.07,
+        "air_actual_vapor_pressure_kpa": 1.79,
+        "air_vpd_kpa": 1.29,
         "light_lux": 18000.0,
         "ir_ambient_temp_c": 24.8,
-        "leaf_temp_c": 25.1
+        "leaf_temp_c": 25.1,
+        "leaf_saturation_vapor_pressure_kpa": 3.19,
+        "leaf_vpd_kpa": 1.4
       },
       "errors": []
     }
@@ -149,6 +154,8 @@ Telemetry payloads use schema version `senior-pomidor.edge.telemetry.v2`:
 ```
 
 Plant sensor errors are reported in each pod's `errors` array so partial telemetry can still be delivered. Hardware health probe errors are reported in `system_health.errors`; failed health metrics or subtrees are omitted while the rest of the health payload remains available.
+
+Vapor pressure deficit metrics are derived on the edge node after raw sensor readings are merged into each enabled pod. Air VPD uses BME280 air temperature and relative humidity. Leaf VPD additionally uses the MLX90615/MLX90614 leaf temperature. If the required raw inputs are unavailable, the corresponding VPD fields are omitted while the rest of the pod metrics remain available.
 
 If Pod 2 is not connected yet, set this in `.env`:
 
@@ -483,6 +490,7 @@ WIFI_INTERFACE=wlan0
 - MLX90615/MLX90614 leaf temperature is line-of-sight. Reflective, wet, or off-target leaves can produce surprising values.
 - Wi-Fi RSSI is in dBm. Values around `-30` are strong, around `-70` are weak but usable, and below `-80` are unreliable.
 - CPU temperature is Celsius. Sustained values near throttling range mean the Pi needs better airflow, a heatsink, or lower enclosure temperature.
+- VPD metrics are in kPa. `air_vpd_kpa` requires `air_temperature_c` and `air_humidity_percent`; `leaf_vpd_kpa` also requires `leaf_temp_c`. If BME280 fails, no VPD fields are emitted for that tick.
 - Disk total, used, free, and percentage values come from `psutil`. `filesystem_read_only` is derived from the mount options for `DISK_USAGE_PATH`; set that path to the root filesystem or the mounted local-storage filesystem you need to monitor.
 - Telemetry and photo buffer metrics recursively count regular files under `LOCAL_STORAGE_DIR` and `CAMERA_STORAGE_DIR`. Missing directories report zero files and zero bytes.
 - `recent_io_error_count` counts matching MicroSD, block-device, and filesystem errors in the last hour of the kernel journal. If the journal is unavailable to the container, the probe is reported under `system_health.errors`.
