@@ -268,6 +268,15 @@ Run tests:
 pytest -q
 ```
 
+Enable the tracked pre-commit secret guard once per clone:
+
+```bash
+chmod +x .githooks/pre-commit
+git config core.hooksPath .githooks
+```
+
+The hook blocks staged local environment files, private-key files, and obvious password/token assignments before commit. If `gitleaks` is installed locally, the hook also runs `gitleaks protect --staged`.
+
 Run the code quality harness locally:
 
 ```bash
