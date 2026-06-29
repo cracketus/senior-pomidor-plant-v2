@@ -1,0 +1,43 @@
+{
+  "core": {
+    "readiness": {
+      "database": "ok",
+      "migration": "current",
+      "ready": true,
+      "status": "ok"
+    },
+    "services": [
+      {
+        "category": "core",
+        "exit_code": null,
+        "health": "healthy",
+        "service": "api",
+        "state": "running",
+        "status": "ok"
+      },
+      {
+        "category": "core",
+        "exit_code": null,
+        "health": "healthy",
+        "service": "worker",
+        "state": "running",
+        "status": "ok"
+      }
+    ]
+  },
+  "edge_devices": [
+    {
+      "device_id": "pi-001",
+      "disk_free_percent": 72.5,
+      "health_alert_count": 0,
+      "last_telemetry_received_at": "2026-06-29T12:00:00Z",
+      "minutes_since_telemetry": 2.0,
+      "photo_buffer_file_count": 1,
+      "status": "ok",
+      "telemetry_buffer_file_count": 0
+    }
+  ],
+  "generated_at_utc": "2026-06-29T12:02:00Z",
+  "overall_status": "ok",
+  "schema_version": "senior-pomidor.status.v1"
+}

@@ -130,6 +130,103 @@ h1 {
   color: var(--accent);
 }
 
+.status-panel {
+  display: grid;
+  gap: 1rem;
+  max-width: 46rem;
+  border-top: 1px solid var(--line);
+  padding-top: 2rem;
+}
+
+.status-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.status-updated,
+.status-muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.status-badge,
+.status-pill {
+  display: inline-flex;
+  min-height: 1.8rem;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.status-ok {
+  border-color: #8dbc8f;
+  background: #e7f4e8;
+  color: #23522a;
+}
+
+.status-degraded {
+  border-color: #ddb46b;
+  background: #fff2d8;
+  color: #6b4814;
+}
+
+.status-stale {
+  border-color: #c9b27f;
+  background: #f5eddc;
+  color: #5d5030;
+}
+
+.status-unknown {
+  border-color: #b9bec0;
+  background: #eef1f1;
+  color: #4b5356;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.status-grid h3 {
+  margin: 0 0 0.75rem;
+  color: var(--accent-strong);
+  font-size: 0.9rem;
+}
+
+.status-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.status-row {
+  display: flex;
+  min-height: 3.25rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.78);
+  padding: 0.75rem;
+  font-size: 0.92rem;
+}
+
+.status-row small {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .about {
   border-top: 1px solid var(--line);
   padding-top: 2rem;
@@ -164,6 +261,16 @@ h2 {
   .link {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .status-header,
+  .status-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .status-grid {
+    grid-template-columns: 1fr;
   }
 
   .meta {

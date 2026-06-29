@@ -16,8 +16,10 @@
         <div class="mark" aria-hidden="true">&#x1f345;</div>
         <h1 id="title">Senior Pomidor</h1>
         <p class="summary">
-          Balcony plant monitoring from sensor edge node to live observability,
-          research notes, and a future public dataset.
+          Balcony plant monitoring from sensor edge node to observability,
+          research notes, and a future public dataset. &#x1f6a7; The edge node is
+          currently under maintenance, so live metrics are temporarily
+          unavailable.
         </p>
       </section>
 
@@ -27,8 +29,8 @@
           <span class="meta">Repository</span>
         </a>
         <a class="link" href="https://stoutibex436.grafana.net/public-dashboards/a2351e3f708642dfa676d7c4c9683a00">
-          <span class="label"><span class="icon" aria-hidden="true">&#x1f4c8;</span>Live Dashboard</span>
-          <span class="meta">Grafana Cloud</span>
+          <span class="label"><span class="icon" aria-hidden="true">&#x1f6e0;&#xfe0f;</span>Dashboard Maintenance</span>
+          <span class="meta">Metrics temporarily unavailable</span>
         </a>
         <a class="link stub" href="#research-journal" id="research-journal">
           <span class="label"><span class="icon" aria-hidden="true">&#x1f4da;</span>Research Journal</span>
@@ -40,15 +42,124 @@
         </a>
       </nav>
 
+      <section class="status-panel" id="status" aria-labelledby="status-title">
+        <div class="status-header">
+          <div>
+            <h2 id="status-title">Live Status</h2>
+            <p id="status-updated" class="status-updated">Loading public status...</p>
+          </div>
+          <span id="overall-status" class="status-badge status-unknown">Unknown</span>
+        </div>
+        <div class="status-grid">
+          <div>
+            <h3>Core Compose</h3>
+            <div id="core-services" class="status-list">
+              <p class="status-muted">Waiting for status data.</p>
+            </div>
+          </div>
+          <div>
+            <h3>Edge Devices</h3>
+            <div id="edge-devices" class="status-list">
+              <p class="status-muted">Waiting for status data.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="about" id="about" aria-labelledby="about-title">
         <h2 id="about-title">About</h2>
         <p>
           Senior Pomidor is an edge telemetry project for tracking tomato plant
           conditions with soil, air, light, leaf temperature, power, and camera
-          signals. This page is a small public index for the project and its
-          upcoming research outputs.
+          signals. The edge node is under maintenance, so the public metrics
+          feed is paused until telemetry is restored. This page is a small
+          public index for the project and its upcoming research outputs.
         </p>
       </section>
     </main>
+    <script>
+      const STATUS_URL = "https://raw.githubusercontent.com/cracketus/senior-pomidor-plant-v2/status-data/status/status.json";
+      const STALE_AFTER_MINUTES = 15;
+
+      function escapeHtml(value) {
+        return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;"
+        }[char]));
+      }
+
+      function statusClass(status) {
+        if (status === "ok") return "status-ok";
+        if (status === "degraded") return "status-degraded";
+        if (status === "stale") return "status-stale";
+        return "status-unknown";
+      }
+
+      function formatStatus(value) {
+        return String(value || "unknown").replace(/^./, (char) => char.toUpperCase());
+      }
+
+      function minutesOld(timestamp) {
+        const parsed = Date.parse(timestamp);
+        if (Number.isNaN(parsed)) return Infinity;
+        return (Date.now() - parsed) / 60000;
+      }
+
+      function renderBadge(status) {
+        const badge = document.getElementById("overall-status");
+        badge.className = `status-badge ${statusClass(status)}`;
+        badge.textContent = formatStatus(status);
+      }
+
+      function renderStatus(data) {
+        const ageMinutes = minutesOld(data.generated_at_utc);
+        const effectiveStatus = ageMinutes > STALE_AFTER_MINUTES ? "stale" : data.overall_status;
+        renderBadge(effectiveStatus);
+        document.getElementById("status-updated").textContent = Number.isFinite(ageMinutes)
+          ? `Updated ${Math.max(0, Math.round(ageMinutes))} min ago`
+          : "Status timestamp unavailable";
+
+        const services = data.core?.services || [];
+        document.getElementById("core-services").innerHTML = services.length
+          ? services.map((service) => `
+              <article class="status-row">
+                <span>${escapeHtml(service.service)}</span>
+                <span class="status-pill ${statusClass(service.status)}">${escapeHtml(formatStatus(service.health || service.state || service.status))}</span>
+              </article>
+            `).join("")
+          : "<p class='status-muted'>No Core service status published.</p>";
+
+        const devices = data.edge_devices || [];
+        document.getElementById("edge-devices").innerHTML = devices.length
+          ? devices.map((device) => `
+              <article class="status-row">
+                <span>
+                  ${escapeHtml(device.device_id)}
+                  <small>${escapeHtml(device.minutes_since_telemetry ?? "?")} min since telemetry</small>
+                </span>
+                <span class="status-pill ${statusClass(device.status)}">${escapeHtml(formatStatus(device.status))}</span>
+              </article>
+            `).join("")
+          : "<p class='status-muted'>No edge telemetry published yet.</p>";
+      }
+
+      async function loadStatus() {
+        try {
+          const response = await fetch(STATUS_URL, { cache: "no-store" });
+          if (!response.ok) throw new Error(`status returned ${response.status}`);
+          renderStatus(await response.json());
+        } catch (error) {
+          renderBadge("unknown");
+          document.getElementById("status-updated").textContent = "Public status unavailable";
+          document.getElementById("core-services").innerHTML = `<p class="status-muted">${escapeHtml(error.message)}</p>`;
+          document.getElementById("edge-devices").innerHTML = "<p class='status-muted'>No edge status available.</p>";
+        }
+      }
+
+      loadStatus();
+    </script>
   </body>
 </html>
