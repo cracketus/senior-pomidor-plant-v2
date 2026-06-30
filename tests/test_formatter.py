@@ -200,8 +200,8 @@ def test_formatter_preserves_network_health_strings_and_status_code() -> None:
             "system_health": {
                 "network": {
                     "wifi_connected": True,
-                    "ssid": "WLAN16849707",
-                    "ip_address": "192.168.1.42",
+                    "ssid": "example-wifi",
+                    "ip_address": "192.0.2.42",
                     "wifi_profile_count": 1,
                     "last_recovery_exit_code": 0,
                     "last_recovery_result": "ok",
@@ -212,8 +212,8 @@ def test_formatter_preserves_network_health_strings_and_status_code() -> None:
 
     assert payload["system_health"]["network"] == {
         "wifi_connected": True,
-        "ssid": "WLAN16849707",
-        "ip_address": "192.168.1.42",
+        "ssid": "example-wifi",
+        "ip_address": "192.0.2.42",
         "wifi_profile_count": 1,
         "last_recovery_exit_code": 0,
         "last_recovery_result": "ok",

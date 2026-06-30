@@ -1,24 +1,25 @@
 {
   "schema_version": "senior-pomidor.edge.telemetry.v2",
-  "device_id": "edge-01",
+  "device_id": "balcony-edge-01",
   "timestamp_utc": "2026-06-06T10:00:00Z",
   "pods": {
     "pod_1": {
       "enabled": true,
       "metrics": {
         "adc_raw": 12450.0,
-        "soil_moisture_percent": 45.2,
+        "soil_moisture_percent": 45.0,
         "soil_temperature_c": 22.4,
-        "air_temperature_c": 24.0,
-        "air_humidity_percent": 58.0,
-        "air_pressure_hpa": 1008.5,
-        "light_lux": 12000.0,
-        "leaf_temp_c": 24.9,
-        "air_saturation_vapor_pressure_kpa": 2.98,
-        "air_actual_vapor_pressure_kpa": 1.73,
-        "air_vpd_kpa": 1.25,
-        "leaf_saturation_vapor_pressure_kpa": 3.15,
-        "leaf_vpd_kpa": 1.42
+        "air_temperature_c": 24.5,
+        "air_humidity_percent": 58.2,
+        "air_pressure_hpa": 1008.3,
+        "air_saturation_vapor_pressure_kpa": 3.07,
+        "air_actual_vapor_pressure_kpa": 1.79,
+        "air_vpd_kpa": 1.29,
+        "light_lux": 18000.0,
+        "ir_ambient_temp_c": 24.8,
+        "leaf_temp_c": 25.1,
+        "leaf_saturation_vapor_pressure_kpa": 3.19,
+        "leaf_vpd_kpa": 1.4
       },
       "errors": []
     },

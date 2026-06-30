@@ -26,8 +26,8 @@ def read(
         mock_metrics: dict[str, NetworkValue] = {
             "wifi_connected": True,
             "interface_up": True,
-            "ssid": "mock-wifi",
-            "ip_address": "192.168.1.42",
+            "ssid": "example-wifi",
+            "ip_address": "192.0.2.42",
             "default_gateway_reachable": True,
             "dns_resolution_ok": True,
             "internet_reachable": True,
