@@ -1,0 +1,12 @@
+{
+  "schema_version": "senior-pomidor.edge.photo.v1",
+  "photo_id": "20260606T100000000000Z_edge-01",
+  "device_id": "edge-01",
+  "captured_at_utc": "2026-06-06T10:00:00Z",
+  "file_name": "20260606T100000000000Z_edge-01.jpg",
+  "file_size_bytes": 54321,
+  "sharpness_score": 12.5,
+  "attempts": 1,
+  "upload_status": "pending",
+  "uploaded_at_utc": null
+}

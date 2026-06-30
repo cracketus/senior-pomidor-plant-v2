@@ -14,6 +14,7 @@ from src.utils.formatter import format_payload
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_DIR = ROOT / "schemas"
 FIXTURE_DIR = ROOT / "tests" / "fixtures"
+EXAMPLE_DIR = ROOT / "examples"
 
 
 def test_contract_fixtures_validate_against_schemas() -> None:
@@ -23,6 +24,15 @@ def test_contract_fixtures_validate_against_schemas() -> None:
         ("edge-photo-v1.schema.json", "edge-photo-v1.valid.json"),
     ]:
         _validate(_read_json(SCHEMA_DIR / schema_name), _read_json(FIXTURE_DIR / fixture_name))
+
+
+def test_public_examples_validate_against_schemas() -> None:
+    for schema_name, example_name in [
+        ("edge-telemetry-v2.schema.json", "edge-telemetry-v2.example.json"),
+        ("edge-event-v1.schema.json", "edge-event-v1.example.json"),
+        ("edge-photo-v1.schema.json", "edge-photo-v1.example.json"),
+    ]:
+        _validate(_read_json(SCHEMA_DIR / schema_name), _read_json(EXAMPLE_DIR / example_name))
 
 
 def test_formatted_telemetry_validates_against_schema() -> None:

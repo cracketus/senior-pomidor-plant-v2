@@ -1,8 +1,23 @@
 # Senior Pomidor: Edge Node
 
+[![Quality](https://github.com/cracketus/senior-pomidor-plant-v2/actions/workflows/quality.yml/badge.svg)](https://github.com/cracketus/senior-pomidor-plant-v2/actions/workflows/quality.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![Release](https://img.shields.io/github/v/release/cracketus/senior-pomidor-plant-v2?include_prereleases)](https://github.com/cracketus/senior-pomidor-plant-v2/releases)
+
 Python edge-node software for balcony plant monitoring. The same application runs on Linux and Windows in mock mode; real sensor hardware mode is supported on Linux/Raspberry Pi.
 
 This repository contains only the balcony hardware and telemetry collection layer. The Core AI server, database, and LLM/VLM processing live in a separate repository.
+
+## Current Status
+
+This `v0.1.0-alpha` release is an edge-node foundation, not the full Senior Pomidor platform.
+
+- This repository contains the Raspberry Pi edge node only.
+- Core server, database, dashboards, state estimation, AI/VLM processing, and public datasets live outside this runtime scope.
+- The state-estimator documentation describes integration contracts and roadmap behavior, not code that runs in this edge node.
+- Actuation and autonomous control are not included.
+- Hardware mode requires Raspberry Pi Linux; Windows and general Linux development use mock sensors.
 
 ## Overview
 
@@ -149,8 +164,8 @@ Telemetry payloads use schema version `senior-pomidor.edge.telemetry.v2`:
     "network": {
       "wifi_connected": true,
       "interface_up": true,
-      "ssid": "WLAN16849707",
-      "ip_address": "192.168.1.42",
+      "ssid": "example-wifi",
+      "ip_address": "192.0.2.42",
       "default_gateway_reachable": true,
       "dns_resolution_ok": true,
       "internet_reachable": true,
@@ -191,7 +206,7 @@ The main loop will skip all Pod 2 sensors. The payload will still include `pods.
 The Raspberry Pi setup script can set this for you:
 
 ```bash
-./scripts/setup_raspberry_pi.sh --hardware --mqtt-host 192.168.1.10 --pod2-disabled
+./scripts/setup_raspberry_pi.sh --hardware --mqtt-host 192.0.2.10 --pod2-disabled
 ```
 
 ## Local Storage
@@ -247,7 +262,7 @@ Set:
 
 ```env
 PHOTO_UPLOAD_ENABLED=true
-PHOTO_UPLOAD_URL=http://192.168.1.10:8000/api/v1/edge/photos
+PHOTO_UPLOAD_URL=http://192.0.2.10:8000/api/v1/edge/photos
 PHOTO_UPLOAD_TOKEN=optional-bearer-token
 ```
 
@@ -342,6 +357,8 @@ It also installs USB camera tooling (`fswebcam` and `v4l-utils`).
 
 Operations runbooks:
 
+- [Edge architecture overview](docs/architecture.md)
+- [Hardware BOM and wiring guide](docs/hardware-bom-and-wiring.md)
 - [Raspberry Pi 24/7 OS configuration](docs/raspberry-pi-24-7-os.md)
 - [Monthly maintenance and planned restarts](docs/maintenance-runbook.md)
 - [Edge contract policy](docs/contracts.md)
@@ -368,7 +385,7 @@ You can also preseed the most important `.env` values in the same command:
 ```bash
 ./scripts/setup_raspberry_pi.sh \
   --hardware \
-  --mqtt-host 192.168.1.10 \
+  --mqtt-host 192.0.2.10 \
   --device-id balcony-edge-01 \
   --pod1-rom 28-000000000001 \
   --pod2-rom 28-000000000002 \
@@ -582,3 +599,15 @@ docker compose up --build -d
 ```
 
 The hardware compose file can be parsed without `.env`, but the app still requires real MQTT and sensor configuration at runtime. It installs `requirements-hardware.txt`, including `rpi-lgpio` for the `RPi.GPIO` compatibility module on Raspberry Pi OS Bookworm, persists telemetry and photos to `./data`, and is Linux/Raspberry Pi specific because it passes through hardware host paths. Camera-enabled Docker deployments use `/dev/video0` by default; the setup script installs `fswebcam`, `v4l-utils`, `libgpiod2`, and `wireless-tools`, and the compose file runs privileged with host networking plus `/run/udev` mounted for Raspberry Pi hardware and Wi-Fi RSSI access.
+
+## Public Status Page
+
+The tracked [index.html](index.html) is a static public status page shell for GitHub Pages or another static host. It reads a status JSON document matching [status/status.sample.json](status/status.sample.json); the sample file is documentation and test data, not live service status.
+
+## Examples
+
+Schema-valid example payloads are available in [examples](examples/):
+
+- [Telemetry payload](examples/edge-telemetry-v2.example.json)
+- [Lifecycle event payload](examples/edge-event-v1.example.json)
+- [Photo metadata payload](examples/edge-photo-v1.example.json)

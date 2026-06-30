@@ -22,7 +22,7 @@ def test_wifi_profile_guard_writes_ok_status_for_healthy_network(tmp_path) -> No
     profile_dir.mkdir()
     (profile_dir / "greenhouse.nmconnection").write_text("[connection]\n", encoding="utf-8")
     _write_fake_command(fake_bin, "nmcli", "printf '%s\\n' 'wlan0:connected'\n")
-    _write_fake_command(fake_bin, "ip", "printf '%s\\n' 'default via 192.168.1.1 dev wlan0'\n")
+    _write_fake_command(fake_bin, "ip", "printf '%s\\n' 'default via 192.0.2.1 dev wlan0'\n")
     _write_fake_command(fake_bin, "ping", "exit 0\n")
     _write_fake_command(fake_bin, "getent", "printf '%s\\n' '1.1.1.1 example.com'\n")
 

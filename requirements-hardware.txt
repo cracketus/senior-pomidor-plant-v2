@@ -4,7 +4,7 @@ adafruit-circuitpython-ads1x15==3.0.4
 adafruit-circuitpython-bh1750==1.1.19
 adafruit-circuitpython-bme280==2.6.32
 adafruit-circuitpython-ina219==3.5.2
-adafruit-circuitpython-mlx90614
+adafruit-circuitpython-mlx90614==1.2.25
 rpi-lgpio==0.6
 smbus2==0.6.1
 w1thermsensor==2.3.0
