@@ -72,6 +72,11 @@ def test_config_parses_health_defaults() -> None:
 
     assert settings.ina219_address == 0x40
     assert settings.wifi_interface == "wlan0"
+    assert settings.wifi_profile_dir == "/etc/NetworkManager/system-connections"
+    assert settings.wifi_preferred_profile is None
+    assert settings.network_check_host == "1.1.1.1"
+    assert settings.network_dns_check_host == "example.com"
+    assert settings.network_recovery_status_file == "data/network-recovery/status.json"
     assert settings.disk_usage_path == "/"
 
 
@@ -81,12 +86,22 @@ def test_config_parses_health_settings() -> None:
             "MQTT_HOST": "core.local",
             "INA219_ADDRESS": "0x41",
             "WIFI_INTERFACE": "wlan1",
+            "WIFI_PROFILE_DIR": "/nm/profiles",
+            "WIFI_PREFERRED_PROFILE": "greenhouse",
+            "NETWORK_CHECK_HOST": "8.8.8.8",
+            "NETWORK_DNS_CHECK_HOST": "core.local",
+            "NETWORK_RECOVERY_STATUS_FILE": "/app/data/network/status.json",
             "DISK_USAGE_PATH": "/app/data",
         }
     )
 
     assert settings.ina219_address == 0x41
     assert settings.wifi_interface == "wlan1"
+    assert settings.wifi_profile_dir == "/nm/profiles"
+    assert settings.wifi_preferred_profile == "greenhouse"
+    assert settings.network_check_host == "8.8.8.8"
+    assert settings.network_dns_check_host == "core.local"
+    assert settings.network_recovery_status_file == "/app/data/network/status.json"
     assert settings.disk_usage_path == "/app/data"
 
 

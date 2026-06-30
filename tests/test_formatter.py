@@ -45,6 +45,7 @@ def test_formatter_preserves_partial_readings_and_errors() -> None:
             "wifi_rssi_dbm": -68.0,
             "filesystem_read_only": False,
         },
+        "network": {},
         "pod_1_hardware": {
             "bus_voltage_v": 3.25,
             "bus_current_ma": 12.4,
@@ -160,6 +161,7 @@ def test_formatter_isolates_health_errors() -> None:
 
     assert payload["system_health"] == {
         "rpi_core": {"cpu_temp_c": 56.4},
+        "network": {},
         "pod_1_hardware": {},
         "errors": [
             {"sensor": "rpi_wifi_rssi", "message": "RSSI unavailable"},
@@ -187,4 +189,32 @@ def test_formatter_preserves_storage_counts_bytes_and_status_types() -> None:
         "filesystem_read_only": False,
         "disk_free_bytes": 123456,
         "telemetry_buffer_file_count": 7,
+    }
+
+
+def test_formatter_preserves_network_health_strings_and_status_code() -> None:
+    settings = load_config({"MQTT_HOST": "core.local"})
+    payload = format_payload(
+        settings,
+        {
+            "system_health": {
+                "network": {
+                    "wifi_connected": True,
+                    "ssid": "WLAN16849707",
+                    "ip_address": "192.168.1.42",
+                    "wifi_profile_count": 1,
+                    "last_recovery_exit_code": 0,
+                    "last_recovery_result": "ok",
+                }
+            }
+        },
+    )
+
+    assert payload["system_health"]["network"] == {
+        "wifi_connected": True,
+        "ssid": "WLAN16849707",
+        "ip_address": "192.168.1.42",
+        "wifi_profile_count": 1,
+        "last_recovery_exit_code": 0,
+        "last_recovery_result": "ok",
     }

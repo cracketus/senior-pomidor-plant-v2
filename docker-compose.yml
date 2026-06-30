@@ -15,6 +15,7 @@ services:
       - /dev/video0:/dev/video0
     volumes:
       - ./data:/app/data
+      - /etc/NetworkManager/system-connections:/etc/NetworkManager/system-connections:ro
       - /run/udev:/run/udev:ro
       - /sys/bus/w1:/sys/bus/w1:ro
       - /sys/devices:/sys/devices:ro

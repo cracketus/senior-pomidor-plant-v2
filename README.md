@@ -82,7 +82,9 @@ Important variables:
 - `CAMERA_DEVICE`, `CAMERA_RESOLUTION`, `CAMERA_JPEG_QUALITY`, `CAMERA_SKIP_FRAMES`, `CAMERA_MAX_ATTEMPTS`, `CAMERA_MIN_SHARPNESS`: USB camera capture quality and retry controls.
 - `PHOTO_UPLOAD_ENABLED`, `PHOTO_UPLOAD_URL`, `PHOTO_UPLOAD_TOKEN`: optional HTTP photo upload settings.
 - `INA219_ADDRESS`: health-control hardware setting for Pod 1 bus monitoring.
-- `WIFI_INTERFACE`, `DISK_USAGE_PATH`: Raspberry Pi OS health probe settings.
+- `WIFI_INTERFACE`, `WIFI_PROFILE_DIR`, `WIFI_PREFERRED_PROFILE`: Raspberry Pi Wi-Fi health probe settings.
+- `NETWORK_CHECK_HOST`, `NETWORK_DNS_CHECK_HOST`, `NETWORK_RECOVERY_STATUS_FILE`: network reachability and host recovery status settings.
+- `DISK_USAGE_PATH`: filesystem path used by Raspberry Pi OS disk health probes.
 - `ADS1115_*_DRY_READING` and `ADS1115_*_WET_READING`: raw ADS1115 soil moisture calibration values from `AnalogIn.value`.
 
 MQTT publishes one JSON payload per tick to:
@@ -143,6 +145,19 @@ Telemetry payloads use schema version `senior-pomidor.edge.telemetry.v2`:
       "photo_buffer_size_bytes": 2400000,
       "recent_io_error_count": 0,
       "io_wait_percent": 1.7
+    },
+    "network": {
+      "wifi_connected": true,
+      "interface_up": true,
+      "ssid": "WLAN16849707",
+      "ip_address": "192.168.1.42",
+      "default_gateway_reachable": true,
+      "dns_resolution_ok": true,
+      "internet_reachable": true,
+      "wifi_profile_count": 1,
+      "active_profile_present": true,
+      "preferred_profile_present": true,
+      "last_recovery_exit_code": 0
     },
     "pod_1_hardware": {
       "bus_voltage_v": 3.25,
@@ -481,6 +496,22 @@ Set it if your Raspberry Pi does not use `wlan0`:
 WIFI_INTERFACE=wlan0
 ```
 
+NetworkManager profile health uses the host profile directory. In Docker hardware mode, `docker-compose.yml` mounts it read-only so the app can detect missing profiles without modifying host network configuration:
+
+```env
+WIFI_PROFILE_DIR=/etc/NetworkManager/system-connections
+WIFI_PREFERRED_PROFILE=
+NETWORK_CHECK_HOST=1.1.1.1
+NETWORK_DNS_CHECK_HOST=example.com
+NETWORK_RECOVERY_STATUS_FILE=data/network-recovery/status.json
+```
+
+To install the optional host-level Wi-Fi guard that backs up `.nmconnection` files and attempts recovery through NetworkManager, run setup with:
+
+```bash
+./scripts/setup_raspberry_pi.sh --hardware --install-wifi-guard
+```
+
 ### If a Sensor Is Not Detected
 
 - Reboot after enabling I2C or 1-Wire. The setup script will tell you when this is required.
@@ -508,6 +539,8 @@ WIFI_INTERFACE=wlan0
 - Telemetry and photo buffer metrics recursively count regular files under `LOCAL_STORAGE_DIR` and `CAMERA_STORAGE_DIR`. Missing directories report zero files and zero bytes.
 - `recent_io_error_count` counts matching MicroSD, block-device, and filesystem errors in the last hour of the kernel journal. If the journal is unavailable to the container, the probe is reported under `system_health.errors`.
 - `io_wait_percent` keeps reporting the current `psutil` CPU I/O-wait measurement.
+- `system_health.network.wifi_profile_count` reports stored NetworkManager Wi-Fi profiles. `0` is critical on a Wi-Fi-only edge node because NetworkManager has no saved SSID/security profile to reconnect.
+- `system_health.network.last_recovery_exit_code` comes from the optional host Wi-Fi guard status file. `0` means the last guard run completed successfully; non-zero values need host-side investigation.
 
 ### Reading Error Fields
 
