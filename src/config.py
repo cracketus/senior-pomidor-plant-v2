@@ -53,6 +53,11 @@ class Settings:
     mlx90615_address: int
     ina219_address: int
     wifi_interface: str
+    wifi_profile_dir: str
+    wifi_preferred_profile: str | None
+    network_check_host: str
+    network_dns_check_host: str
+    network_recovery_status_file: str
     disk_usage_path: str
     ads1115_pod1_channel: str
     ads1115_pod2_channel: str
@@ -121,6 +126,11 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
         mlx90615_address=_int(env, "MLX90615_ADDRESS", 0x5A, minimum=0),
         ina219_address=_int(env, "INA219_ADDRESS", 0x40, minimum=0),
         wifi_interface=_string(env, "WIFI_INTERFACE", "wlan0"),
+        wifi_profile_dir=_string(env, "WIFI_PROFILE_DIR", "/etc/NetworkManager/system-connections"),
+        wifi_preferred_profile=_optional(env, "WIFI_PREFERRED_PROFILE"),
+        network_check_host=_string(env, "NETWORK_CHECK_HOST", "1.1.1.1"),
+        network_dns_check_host=_string(env, "NETWORK_DNS_CHECK_HOST", "example.com"),
+        network_recovery_status_file=_string(env, "NETWORK_RECOVERY_STATUS_FILE", "data/network-recovery/status.json"),
         disk_usage_path=_string(env, "DISK_USAGE_PATH", "/"),
         ads1115_pod1_channel=_channel(env, "ADS1115_POD1_CHANNEL", "A0"),
         ads1115_pod2_channel=_channel(env, "ADS1115_POD2_CHANNEL", "A1"),

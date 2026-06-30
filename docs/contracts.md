@@ -46,7 +46,9 @@ Required top-level fields:
 
 Shared air, light, and leaf-temperature readings are merged into each enabled pod. If a shared sensor fails, its error appears in each enabled pod because that pod is missing the shared measurement for that tick. Disabled pods are still present with `enabled=false`, empty metrics, and no errors.
 
-`system_health` includes `rpi_core`, `pod_1_hardware`, and `errors`. Health metrics are numeric or boolean. Failed health probes omit their metric values and add entries to `system_health.errors`.
+`system_health` includes `rpi_core`, optional `network`, `pod_1_hardware`, and `errors`. Core health metrics are numeric or boolean. Network health metrics may also include strings such as `ssid`, `ip_address`, and host recovery status names. Failed health probes omit their metric values and add entries to `system_health.errors`.
+
+The optional `system_health.network` subtree reports Wi-Fi connection state, NetworkManager profile integrity, reachability, and the last host Wi-Fi guard result when `NETWORK_RECOVERY_STATUS_FILE` exists. Producers must not write NetworkManager profiles from inside the telemetry container; profile restore and NetworkManager restart actions belong to the host helper.
 
 Common metric units:
 

@@ -27,6 +27,12 @@
             "type": ["number", "integer", "boolean"]
           }
         },
+        "network": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "number", "integer", "boolean"]
+          }
+        },
         "pod_1_hardware": {
           "type": "object",
           "additionalProperties": {

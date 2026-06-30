@@ -36,6 +36,19 @@
       "telemetry_buffer_file_count": 7,
       "disk_free_bytes": 123456
     },
+    "network": {
+      "wifi_connected": true,
+      "interface_up": true,
+      "ssid": "WLAN16849707",
+      "ip_address": "192.168.1.42",
+      "default_gateway_reachable": true,
+      "dns_resolution_ok": true,
+      "internet_reachable": true,
+      "wifi_profile_count": 1,
+      "active_profile_present": true,
+      "preferred_profile_present": true,
+      "last_recovery_exit_code": 0
+    },
     "pod_1_hardware": {
       "bus_voltage_v": 3.25,
       "bus_current_ma": 12.4

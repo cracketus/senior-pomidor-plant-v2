@@ -4,6 +4,7 @@ set -euo pipefail
 MODE="hardware"
 AUTO_REBOOT="false"
 SKIP_START="false"
+INSTALL_WIFI_GUARD="false"
 REBOOT_NEEDED="false"
 DEVICE_ID_VALUE=""
 MQTT_HOST_VALUE=""
@@ -26,6 +27,8 @@ Options:
   --pod2-disabled Set POD2_ENABLED=false in .env.
   --interval SEC  Set POLL_INTERVAL_SECONDS in .env.
   --auto-reboot   Reboot automatically if I2C or 1-Wire was enabled during this run.
+  --install-wifi-guard
+                 Install a root systemd timer that backs up and restores NetworkManager Wi-Fi profiles.
   --skip-start    Prepare the host and .env, but do not start the container.
   -h, --help      Show this help.
 
@@ -82,6 +85,9 @@ while [ "$#" -gt 0 ]; do
       ;;
     --auto-reboot)
       AUTO_REBOOT="true"
+      ;;
+    --install-wifi-guard)
+      INSTALL_WIFI_GUARD="true"
       ;;
     --skip-start)
       SKIP_START="true"
@@ -212,6 +218,44 @@ start_container() {
   fi
 }
 
+install_wifi_guard() {
+  [ "$INSTALL_WIFI_GUARD" = "true" ] || return
+
+  local repo_dir
+  repo_dir="$(pwd)"
+  log "Installing Wi-Fi profile guard systemd timer"
+  chmod +x scripts/wifi_profile_guard.sh
+
+  cat <<EOF | "${SUDO[@]}" tee /etc/systemd/system/senior-pomidor-wifi-guard.service >/dev/null
+[Unit]
+Description=Senior Pomidor Wi-Fi profile guard
+After=NetworkManager.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=${repo_dir}
+EnvironmentFile=-${repo_dir}/.env
+ExecStart=/bin/bash ${repo_dir}/scripts/wifi_profile_guard.sh
+EOF
+
+  cat <<'EOF' | "${SUDO[@]}" tee /etc/systemd/system/senior-pomidor-wifi-guard.timer >/dev/null
+[Unit]
+Description=Run Senior Pomidor Wi-Fi profile guard every minute
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=60
+AccuracySec=10
+Unit=senior-pomidor-wifi-guard.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  "${SUDO[@]}" systemctl daemon-reload
+  "${SUDO[@]}" systemctl enable --now senior-pomidor-wifi-guard.timer
+}
+
 install_host_packages
 install_docker
 
@@ -220,6 +264,7 @@ if [ "$MODE" = "hardware" ]; then
 fi
 
 prepare_env_file
+install_wifi_guard
 
 if [ "$REBOOT_NEEDED" = "true" ]; then
   log "A reboot is required before hardware interfaces are available."

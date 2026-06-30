@@ -38,6 +38,8 @@ ls /dev/i2c-1
 ls /sys/bus/w1/devices
 iw dev wlan0 link
 iw dev wlan0 get power_save
+nmcli connection show
+sudo ls -l /etc/NetworkManager/system-connections
 ```
 
 Check network reachability. Replace the host with the configured MQTT host from `.env`:
@@ -52,6 +54,9 @@ Back up local configuration:
 ```bash
 mkdir -p data/backups
 cp .env "data/backups/.env.$(date -u +%Y%m%dT%H%M%SZ)"
+NM_BACKUP_DIR="data/backups/networkmanager/$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$NM_BACKUP_DIR"
+sudo cp -p /etc/NetworkManager/system-connections/*.nmconnection "$NM_BACKUP_DIR"/ 2>/dev/null || true
 ```
 
 Emit the planned maintenance start event before stopping the container, rebooting, powering down, or servicing sensors:
@@ -156,6 +161,15 @@ Inspect the latest telemetry payload and verify the storage health fields under 
 - `photo_buffer_file_count` / `photo_buffer_size_bytes` show retained photo growth.
 - `recent_io_error_count` should normally be `0`.
 
+Inspect the network health fields under `system_health.network`:
+
+- `wifi_connected` should be `true`.
+- `ssid` and `ip_address` should match the expected LAN.
+- `wifi_profile_count` must be at least `1` for a Wi-Fi-only edge node.
+- `active_profile_present` should be `true` when the active SSID has a matching `.nmconnection` profile.
+- `preferred_profile_present` should be `true` when `WIFI_PREFERRED_PROFILE` is configured.
+- `last_recovery_exit_code` should be `0` when the optional host Wi-Fi guard is installed.
+
 If `system_health.errors` contains `rpi_recent_io_errors`, the container cannot read the kernel journal. Check the host directly:
 
 ```bash
@@ -248,6 +262,25 @@ If Docker itself is unhealthy:
 sudo systemctl restart docker
 docker compose up -d senior-pomidor-edge
 docker compose logs --tail=100 senior-pomidor-edge
+```
+
+If Wi-Fi profiles are missing or NetworkManager cannot reconnect:
+
+```bash
+sudo ls -l /etc/NetworkManager/system-connections
+find data/backups/networkmanager -maxdepth 2 -type f -name '*.nmconnection' | sort | tail
+sudo bash scripts/wifi_profile_guard.sh
+cat data/network-recovery/status.json
+nmcli device status
+nmcli connection show
+```
+
+If the guard restored profiles, verify ownership and permissions before relying on automatic reconnect:
+
+```bash
+sudo chown root:root /etc/NetworkManager/system-connections/*.nmconnection
+sudo chmod 600 /etc/NetworkManager/system-connections/*.nmconnection
+sudo nmcli connection reload
 ```
 
 If hardware interfaces are missing after OS updates:

@@ -10,7 +10,16 @@ from src.config import ConfigError, Settings, load_config
 from src.network.http_sender import HttpSender
 from src.network.mqtt_sender import MqttSender
 from src.network.photo_sender import HttpPhotoSender
-from src.sensors import adc_ads1115, air_bme280, ina219, ir_mlx90615, light_bh1750, rpi_core, temp_ds18b20
+from src.sensors import (
+    adc_ads1115,
+    air_bme280,
+    ina219,
+    ir_mlx90615,
+    light_bh1750,
+    network_health,
+    rpi_core,
+    temp_ds18b20,
+)
 from src.utils.camera import capture_photo
 from src.utils.formatter import format_payload
 from src.utils.local_storage import delete_payload_file, list_pending_payloads, load_payload_file, save_payload
@@ -68,6 +77,15 @@ def _collect_system_health(settings: Settings) -> dict[str, Any]:
             disk_usage_path=settings.disk_usage_path,
             telemetry_buffer_path=settings.local_storage_dir,
             photo_buffer_path=settings.camera_storage_dir,
+            mock=settings.mock_sensors,
+        ),
+        "network": network_health.read(
+            wifi_interface=settings.wifi_interface,
+            wifi_profile_dir=settings.wifi_profile_dir,
+            wifi_preferred_profile=settings.wifi_preferred_profile,
+            network_check_host=settings.network_check_host,
+            network_dns_check_host=settings.network_dns_check_host,
+            recovery_status_file=settings.network_recovery_status_file,
             mock=settings.mock_sensors,
         ),
         "pod_1_hardware": {
