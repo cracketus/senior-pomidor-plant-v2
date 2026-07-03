@@ -59,6 +59,7 @@ class Settings:
     network_dns_check_host: str
     network_recovery_status_file: str
     disk_usage_path: str
+    service_name: str | None
     ads1115_pod1_channel: str
     ads1115_pod2_channel: str
     ads1115_pod1_dry_reading: float
@@ -132,6 +133,7 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
         network_dns_check_host=_string(env, "NETWORK_DNS_CHECK_HOST", "example.com"),
         network_recovery_status_file=_string(env, "NETWORK_RECOVERY_STATUS_FILE", "data/network-recovery/status.json"),
         disk_usage_path=_string(env, "DISK_USAGE_PATH", "/"),
+        service_name=_optional(env, "SERVICE_NAME"),
         ads1115_pod1_channel=_channel(env, "ADS1115_POD1_CHANNEL", "A0"),
         ads1115_pod2_channel=_channel(env, "ADS1115_POD2_CHANNEL", "A1"),
         ads1115_pod1_dry_reading=_float_alias(env, "ADS1115_POD1_DRY_READING", "ADS1115_POD1_DRY_VOLTAGE", 17736.0),
@@ -176,6 +178,7 @@ def public_settings(settings: Settings) -> dict[str, object]:
         "local_event_dir": settings.local_event_dir,
         "wifi_interface": settings.wifi_interface,
         "disk_usage_path": settings.disk_usage_path,
+        "service_name": settings.service_name,
     }
 
 

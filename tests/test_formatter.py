@@ -33,6 +33,7 @@ def test_formatter_preserves_partial_readings_and_errors() -> None:
 
     assert payload["schema_version"] == SCHEMA_VERSION
     assert payload["timestamp_utc"] == "2026-06-06T10:00:00Z"
+    assert payload["heartbeat_utc"] == "2026-06-06T10:00:00Z"
     assert payload["pods"]["pod_1"]["enabled"] is True
     assert payload["pods"]["pod_1"]["metrics"]["soil_moisture_percent"] == 45.2
     assert payload["pods"]["pod_1"]["metrics"]["light_lux"] == 12000.0
@@ -46,6 +47,7 @@ def test_formatter_preserves_partial_readings_and_errors() -> None:
             "filesystem_read_only": False,
         },
         "network": {},
+        "application": {},
         "pod_1_hardware": {
             "bus_voltage_v": 3.25,
             "bus_current_ma": 12.4,
@@ -162,6 +164,7 @@ def test_formatter_isolates_health_errors() -> None:
     assert payload["system_health"] == {
         "rpi_core": {"cpu_temp_c": 56.4},
         "network": {},
+        "application": {},
         "pod_1_hardware": {},
         "errors": [
             {"sensor": "rpi_wifi_rssi", "message": "RSSI unavailable"},

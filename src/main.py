@@ -13,6 +13,7 @@ from src.network.photo_sender import HttpPhotoSender
 from src.sensors import (
     adc_ads1115,
     air_bme280,
+    application_health,
     ina219,
     ir_mlx90615,
     light_bh1750,
@@ -86,6 +87,19 @@ def _collect_system_health(settings: Settings) -> dict[str, Any]:
             network_check_host=settings.network_check_host,
             network_dns_check_host=settings.network_dns_check_host,
             recovery_status_file=settings.network_recovery_status_file,
+            mqtt_host=settings.mqtt_host,
+            mqtt_port=settings.mqtt_port,
+            http_enabled=settings.http_enabled,
+            core_http_url=settings.core_http_url,
+            photo_upload_enabled=settings.photo_upload_enabled,
+            photo_upload_url=settings.photo_upload_url,
+            telemetry_queue_dir=settings.local_storage_dir,
+            photo_queue_dir=settings.camera_storage_dir,
+            timeout_seconds=settings.http_timeout_seconds,
+            mock=settings.mock_sensors,
+        ),
+        "application": application_health.read(
+            service_name=settings.service_name,
             mock=settings.mock_sensors,
         ),
         "pod_1_hardware": {
