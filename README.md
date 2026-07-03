@@ -361,6 +361,7 @@ Operations runbooks:
 - [Edge architecture overview](docs/architecture.md)
 - [Hardware BOM and wiring guide](docs/hardware-bom-and-wiring.md)
 - [Raspberry Pi 24/7 OS configuration](docs/raspberry-pi-24-7-os.md)
+- [systemd edge service guide](docs/edge-service.md)
 - [Monthly maintenance and planned restarts](docs/maintenance-runbook.md)
 - [Edge contract policy](docs/contracts.md)
 - [Core integration contract](docs/core-integration.md)
@@ -416,6 +417,25 @@ CAMERA_INTERVAL_SECONDS=3600
 CAMERA_DEVICE=/dev/video0
 CAMERA_RESOLUTION=1920x1080
 ```
+
+Before starting real hardware mode, run the full host readiness check:
+
+```bash
+python scripts/hardware_readiness.py --env-file .env
+```
+
+The command checks camera access, I2C, 1-Wire, MQTT reachability, Core HTTP API reachability, and system time synchronization. Each failure includes a fix hint.
+
+To prove end-to-end Core compatibility from the Raspberry Pi, send one MQTT payload, one HTTP telemetry payload, one JPEG upload, and verify Core read APIs:
+
+```bash
+python scripts/compatibility_check.py \
+  --env-file .env \
+  --telemetry-read-url "http://192.0.2.10:8000/api/v1/edge/telemetry?device_id=balcony-edge-01" \
+  --photo-read-url "http://192.0.2.10:8000/api/v1/edge/photos?device_id=balcony-edge-01"
+```
+
+The read URLs can also be set with `CORE_TELEMETRY_READ_URL` and `PHOTO_METADATA_READ_URL`. The command exits non-zero if any send or verification step fails.
 
 ## Hardware Discovery and Troubleshooting
 

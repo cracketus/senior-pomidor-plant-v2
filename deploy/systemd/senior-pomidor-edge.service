@@ -1,0 +1,22 @@
+[Unit]
+Description=Senior Pomidor edge client
+Documentation=https://github.com/cracketus/senior-pomidor-plant-v2
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=exec
+WorkingDirectory=/opt/senior-pomidor-plant-v2
+EnvironmentFile=-/etc/senior-pomidor/edge.env
+ExecStart=/usr/bin/docker compose up --build senior-pomidor-edge
+ExecStop=/usr/bin/docker compose stop senior-pomidor-edge
+Restart=always
+RestartSec=10
+TimeoutStartSec=0
+TimeoutStopSec=60
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=senior-pomidor-edge
+
+[Install]
+WantedBy=multi-user.target
