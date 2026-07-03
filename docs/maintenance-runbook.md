@@ -46,7 +46,7 @@ Check network reachability. Replace the host with the configured MQTT host from 
 
 ```bash
 grep '^MQTT_HOST=' .env
-ping -c 4 192.168.1.10
+ping -c 4 192.0.2.10
 ```
 
 Back up local configuration:
