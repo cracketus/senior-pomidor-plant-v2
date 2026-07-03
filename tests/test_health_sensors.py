@@ -75,6 +75,57 @@ def test_rpi_core_reads_psutil_disk_and_io_wait(monkeypatch) -> None:
     assert rpi_core.read_io_wait_percent() == 1.7
 
 
+def test_rpi_core_reads_memory_metrics(monkeypatch) -> None:
+    fake_psutil = types.SimpleNamespace(
+        virtual_memory=lambda: types.SimpleNamespace(percent=42.54, available=512_000_000),
+        swap_memory=lambda: types.SimpleNamespace(percent=3.14, free=248_000_000),
+    )
+    monkeypatch.setitem(sys.modules, "psutil", fake_psutil)
+
+    assert rpi_core.read_memory_metrics() == {
+        "memory_usage_percent": 42.5,
+        "memory_available_bytes": 512_000_000,
+        "swap_usage_percent": 3.1,
+        "swap_available_bytes": 248_000_000,
+    }
+
+
+def test_rpi_core_parses_clear_throttling_flags() -> None:
+    assert rpi_core.parse_throttled_flags("throttled=0x0\n") == {
+        "under_voltage_now": False,
+        "frequency_capped_now": False,
+        "throttled_now": False,
+        "under_voltage_seen": False,
+        "frequency_capped_seen": False,
+        "throttled_seen": False,
+    }
+
+
+def test_rpi_core_parses_current_and_historical_throttling_flags() -> None:
+    assert rpi_core.parse_throttled_flags("throttled=0x70007\n") == {
+        "under_voltage_now": True,
+        "frequency_capped_now": True,
+        "throttled_now": True,
+        "under_voltage_seen": True,
+        "frequency_capped_seen": True,
+        "throttled_seen": True,
+    }
+
+
+def test_rpi_core_reports_missing_vcgencmd_as_isolated_error(monkeypatch) -> None:
+    def raise_missing_vcgencmd(*_args, **_kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "vcgencmd")
+
+    monkeypatch.setattr(rpi_core.subprocess, "run", raise_missing_vcgencmd)
+
+    try:
+        rpi_core.read_throttling_metrics()
+    except RuntimeError as exc:
+        assert str(exc) == "vcgencmd is unavailable"
+    else:
+        raise AssertionError("Expected missing vcgencmd to raise RuntimeError")
+
+
 def test_rpi_core_detects_read_only_filesystem(monkeypatch) -> None:
     fake_psutil = types.SimpleNamespace(
         disk_partitions=lambda all=True: [
@@ -129,6 +180,15 @@ def test_rpi_core_counts_recent_kernel_io_errors(monkeypatch) -> None:
     assert rpi_core.read_recent_io_error_count() == 2
 
 
+def test_rpi_core_treats_missing_journalctl_as_zero_recent_io_errors(monkeypatch) -> None:
+    def raise_missing_journalctl(*_args, **_kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "journalctl")
+
+    monkeypatch.setattr(rpi_core.subprocess, "run", raise_missing_journalctl)
+
+    assert rpi_core.read_recent_io_error_count() == 0
+
+
 def test_rpi_core_keeps_partial_metrics_on_probe_failure(monkeypatch) -> None:
     monkeypatch.setattr(rpi_core, "read_cpu_temp_c", lambda: 56.4)
 
@@ -156,6 +216,10 @@ def test_rpi_core_keeps_partial_metrics_on_probe_failure(monkeypatch) -> None:
         lambda: (_ for _ in ()).throw(RuntimeError("kernel log unavailable")),
     )
     monkeypatch.setattr(rpi_core, "read_io_wait_percent", lambda: 1.7)
+    monkeypatch.setattr(rpi_core, "read_throttling_metrics", lambda: {"under_voltage_now": False})
+    monkeypatch.setattr(rpi_core, "read_memory_metrics", lambda: {"memory_usage_percent": 42.5})
+    monkeypatch.setattr(rpi_core, "read_load_average_metrics", lambda: {"load_average_1m": 0.42})
+    monkeypatch.setattr(rpi_core, "read_uptime_seconds", lambda: 86400)
 
     reading = rpi_core.read(wifi_interface="wlan0", disk_usage_path="/")
 
@@ -167,6 +231,10 @@ def test_rpi_core_keeps_partial_metrics_on_probe_failure(monkeypatch) -> None:
         "photo_buffer_file_count": 0,
         "photo_buffer_size_bytes": 0,
         "io_wait_percent": 1.7,
+        "under_voltage_now": False,
+        "memory_usage_percent": 42.5,
+        "load_average_1m": 0.42,
+        "uptime_seconds": 86400,
         "errors": [
             {"sensor": "rpi_wifi_rssi", "message": "RSSI unavailable"},
             {"sensor": "rpi_filesystem_status", "message": "mount unavailable"},

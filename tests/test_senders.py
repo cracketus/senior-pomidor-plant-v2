@@ -40,6 +40,45 @@ def test_http_sender_disabled_returns_false() -> None:
     assert HttpSender(settings).send({"hello": "world"}) is False
 
 
+def test_http_sender_accepts_202_and_posts_payload() -> None:
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/api/v1/edge/telemetry",
+            "HTTP_TIMEOUT_SECONDS": "7",
+        }
+    )
+    captured = {}
+
+    def post_func(url, json, timeout):
+        captured["url"] = url
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return Response(202)
+
+    payload = {"schema_version": "senior-pomidor.edge.telemetry.v2"}
+
+    assert HttpSender(settings, post_func=post_func).send(payload) is True
+    assert captured == {
+        "url": "https://core.example/api/v1/edge/telemetry",
+        "json": payload,
+        "timeout": 7.0,
+    }
+
+
+def test_http_sender_rejects_non_202_status() -> None:
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/api/v1/edge/telemetry",
+        }
+    )
+
+    assert HttpSender(settings, post_func=lambda *_args, **_kwargs: Response(200)).send({"hello": "world"}) is False
+
+
 def test_http_photo_sender_uploads_multipart_and_marks_uploaded(tmp_path) -> None:
     settings = load_config(
         {
@@ -63,7 +102,7 @@ def test_http_photo_sender_uploads_multipart_and_marks_uploaded(tmp_path) -> Non
         captured["data"] = data
         captured["headers"] = headers
         captured["timeout"] = timeout
-        return Response(201)
+        return Response(202)
 
     assert HttpPhotoSender(settings, post_func=post_func).send(record) is True
 
@@ -103,6 +142,20 @@ def test_http_photo_sender_preserves_pending_on_failure(tmp_path) -> None:
     metadata = json.loads(record.metadata_path.read_text(encoding="utf-8"))
     assert metadata["upload_status"] == "pending"
     assert metadata["uploaded_at_utc"] is None
+
+
+def test_http_photo_sender_treats_duplicate_200_as_success(tmp_path) -> None:
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "PHOTO_UPLOAD_ENABLED": "true",
+            "PHOTO_UPLOAD_URL": "https://core.example/photos",
+            "CAMERA_STORAGE_DIR": str(tmp_path),
+        }
+    )
+    record = _photo_record(tmp_path)
+
+    assert HttpPhotoSender(settings, post_func=lambda *_args, **_kwargs: Response(200)).send(record) is True
 
 
 def test_http_photo_sender_disabled_returns_zero(tmp_path) -> None:

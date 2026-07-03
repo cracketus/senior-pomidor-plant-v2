@@ -160,6 +160,9 @@ Inspect the latest telemetry payload and verify the storage health fields under 
 - `telemetry_buffer_file_count` / `telemetry_buffer_size_bytes` show queued telemetry growth.
 - `photo_buffer_file_count` / `photo_buffer_size_bytes` show retained photo growth.
 - `recent_io_error_count` should normally be `0`.
+- `under_voltage_now`, `frequency_capped_now`, and `throttled_now` should be `false`; `true` means current power or thermal throttling.
+- `under_voltage_seen`, `frequency_capped_seen`, and `throttled_seen` should normally be `false` after boot; `true` means the condition occurred since the last reboot.
+- `memory_available_bytes`, `swap_available_bytes`, load averages, and `uptime_seconds` help identify memory pressure, CPU pressure, and unexpected restarts.
 
 Inspect the network health fields under `system_health.network`:
 

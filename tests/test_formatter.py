@@ -180,6 +180,7 @@ def test_formatter_preserves_storage_counts_bytes_and_status_types() -> None:
                     "filesystem_read_only": False,
                     "disk_free_bytes": 123456,
                     "telemetry_buffer_file_count": 7,
+                    "uptime_seconds": 86400,
                 }
             }
         },
@@ -189,6 +190,7 @@ def test_formatter_preserves_storage_counts_bytes_and_status_types() -> None:
         "filesystem_read_only": False,
         "disk_free_bytes": 123456,
         "telemetry_buffer_file_count": 7,
+        "uptime_seconds": 86400,
     }
 
 

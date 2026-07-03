@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,20 @@ def read(
             "photo_buffer_size_bytes": 2_400_000,
             "recent_io_error_count": 0,
             "io_wait_percent": 1.7,
+            "under_voltage_now": False,
+            "frequency_capped_now": False,
+            "throttled_now": False,
+            "under_voltage_seen": False,
+            "frequency_capped_seen": False,
+            "throttled_seen": False,
+            "memory_usage_percent": 42.5,
+            "memory_available_bytes": 512_000_000,
+            "swap_usage_percent": 3.1,
+            "swap_available_bytes": 248_000_000,
+            "load_average_1m": 0.42,
+            "load_average_5m": 0.35,
+            "load_average_15m": 0.28,
+            "uptime_seconds": 86_400,
         }
 
     metrics: dict[str, Any] = {}
@@ -73,6 +88,10 @@ def read(
     )
     _probe_metric(metrics, errors, "recent_io_error_count", "rpi_recent_io_errors", read_recent_io_error_count)
     _probe_metric(metrics, errors, "io_wait_percent", "rpi_io_wait", read_io_wait_percent)
+    _probe_metrics(metrics, errors, "rpi_throttling", read_throttling_metrics)
+    _probe_metrics(metrics, errors, "rpi_memory", read_memory_metrics)
+    _probe_metrics(metrics, errors, "rpi_load_average", read_load_average_metrics)
+    _probe_metric(metrics, errors, "uptime_seconds", "rpi_uptime", read_uptime_seconds)
 
     if errors:
         metrics["errors"] = errors
@@ -195,13 +214,16 @@ def read_buffer_metrics(path: str, metric_prefix: str) -> dict[str, MetricValue]
 
 
 def read_recent_io_error_count() -> int:
-    output = subprocess.run(
-        ["journalctl", "--dmesg", "--since", "-1 hour", "--no-pager", "--output=cat"],
-        capture_output=True,
-        text=True,
-        timeout=3,
-        check=False,
-    )
+    try:
+        output = subprocess.run(
+            ["journalctl", "--dmesg", "--since", "-1 hour", "--no-pager", "--output=cat"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except FileNotFoundError:
+        return 0
     if output.returncode != 0:
         message = (output.stderr or output.stdout).strip() or f"journalctl exited with {output.returncode}"
         raise RuntimeError(f"Kernel I/O error log is unavailable: {message}")
@@ -215,6 +237,74 @@ def read_io_wait_percent() -> float:
     if not hasattr(cpu_times, "iowait"):
         raise RuntimeError("I/O wait is unavailable on this platform")
     return round_metric(cpu_times.iowait, 1)
+
+
+def read_throttling_metrics() -> dict[str, MetricValue]:
+    try:
+        output = subprocess.run(
+            ["vcgencmd", "get_throttled"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError("vcgencmd is unavailable") from exc
+    if output.returncode != 0:
+        message = (output.stderr or output.stdout).strip() or f"vcgencmd exited with {output.returncode}"
+        raise RuntimeError(f"Raspberry Pi throttling status is unavailable: {message}")
+    return parse_throttled_flags(output.stdout)
+
+
+def parse_throttled_flags(text: str) -> dict[str, MetricValue]:
+    match = re.search(r"throttled=([0-9a-fA-Fx]+)", text)
+    if not match:
+        raise RuntimeError(f"Unexpected vcgencmd get_throttled output: {text.strip()}")
+    flags = int(match.group(1), 0)
+    return {
+        "under_voltage_now": bool(flags & (1 << 0)),
+        "frequency_capped_now": bool(flags & (1 << 1)),
+        "throttled_now": bool(flags & (1 << 2)),
+        "under_voltage_seen": bool(flags & (1 << 16)),
+        "frequency_capped_seen": bool(flags & (1 << 17)),
+        "throttled_seen": bool(flags & (1 << 18)),
+    }
+
+
+def read_memory_metrics() -> dict[str, MetricValue]:
+    import psutil
+
+    memory = psutil.virtual_memory()
+    swap = psutil.swap_memory()
+    return {
+        "memory_usage_percent": round_metric(memory.percent, 1),
+        "memory_available_bytes": int(memory.available),
+        "swap_usage_percent": round_metric(swap.percent, 1),
+        "swap_available_bytes": int(swap.free),
+    }
+
+
+def read_load_average_metrics() -> dict[str, MetricValue]:
+    try:
+        import psutil
+
+        load_1m, load_5m, load_15m = psutil.getloadavg()
+    except (AttributeError, OSError) as exc:
+        raise RuntimeError("Load average is unavailable on this platform") from exc
+    return {
+        "load_average_1m": round_metric(load_1m, 2),
+        "load_average_5m": round_metric(load_5m, 2),
+        "load_average_15m": round_metric(load_15m, 2),
+    }
+
+
+def read_uptime_seconds() -> int:
+    try:
+        import psutil
+
+        return max(0, int(time.time() - psutil.boot_time()))
+    except (AttributeError, OSError) as exc:
+        raise RuntimeError("System uptime is unavailable on this platform") from exc
 
 
 def _probe_metric(
