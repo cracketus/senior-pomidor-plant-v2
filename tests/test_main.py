@@ -55,6 +55,7 @@ def test_run_includes_health_payload(monkeypatch) -> None:
     run(settings, sleep=lambda _seconds: None)
 
     assert saved_payloads[0]["system_health"]["rpi_core"]["wifi_rssi_dbm"] == -68.0
+    assert saved_payloads[0]["system_health"]["application"]["process_running"] is True
     assert sent_payloads[0]["system_health"]["pod_1_hardware"]["bus_current_ma"] == 12.4
 
 

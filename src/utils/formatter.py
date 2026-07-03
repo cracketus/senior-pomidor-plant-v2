@@ -19,10 +19,12 @@ def format_payload(
     timestamp = timestamp or datetime.now(UTC)
     shared = readings.get("shared", {})
 
+    formatted_timestamp = _format_timestamp(timestamp)
     return {
         "schema_version": SCHEMA_VERSION,
         "device_id": settings.device_id,
-        "timestamp_utc": _format_timestamp(timestamp),
+        "timestamp_utc": formatted_timestamp,
+        "heartbeat_utc": formatted_timestamp,
         "pods": {
             "pod_1": _format_pod(readings.get("pod_1", {}), shared),
             "pod_2": _format_pod(readings.get("pod_2", {}), shared),
@@ -70,6 +72,7 @@ def _format_system_health(readings: Any) -> dict[str, Any]:
     result: dict[str, Any] = {
         "rpi_core": {},
         "network": {},
+        "application": {},
         "pod_1_hardware": {},
         "errors": errors,
     }
@@ -78,6 +81,7 @@ def _format_system_health(readings: Any) -> dict[str, Any]:
 
     _merge_health_metrics(readings.get("rpi_core"), result["rpi_core"], errors)
     _merge_health_metrics(readings.get("network"), result["network"], errors)
+    _merge_health_metrics(readings.get("application"), result["application"], errors)
 
     pod_1_hardware = readings.get("pod_1_hardware", {})
     if isinstance(pod_1_hardware, dict):

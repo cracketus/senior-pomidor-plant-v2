@@ -78,6 +78,7 @@ def test_config_parses_health_defaults() -> None:
     assert settings.network_dns_check_host == "example.com"
     assert settings.network_recovery_status_file == "data/network-recovery/status.json"
     assert settings.disk_usage_path == "/"
+    assert settings.service_name is None
 
 
 def test_config_parses_health_settings() -> None:
@@ -92,6 +93,7 @@ def test_config_parses_health_settings() -> None:
             "NETWORK_DNS_CHECK_HOST": "core.local",
             "NETWORK_RECOVERY_STATUS_FILE": "/app/data/network/status.json",
             "DISK_USAGE_PATH": "/app/data",
+            "SERVICE_NAME": "senior-pomidor-edge",
         }
     )
 
@@ -103,6 +105,7 @@ def test_config_parses_health_settings() -> None:
     assert settings.network_dns_check_host == "core.local"
     assert settings.network_recovery_status_file == "/app/data/network/status.json"
     assert settings.disk_usage_path == "/app/data"
+    assert settings.service_name == "senior-pomidor-edge"
 
 
 def test_config_parses_camera_settings() -> None:

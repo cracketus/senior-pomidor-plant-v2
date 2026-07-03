@@ -8,6 +8,7 @@
     "schema_version": { "const": "senior-pomidor.edge.telemetry.v2" },
     "device_id": { "type": "string", "minLength": 1 },
     "timestamp_utc": { "$ref": "#/$defs/utcTimestamp" },
+    "heartbeat_utc": { "$ref": "#/$defs/utcTimestamp" },
     "pods": {
       "type": "object",
       "required": ["pod_1", "pod_2"],
@@ -37,6 +38,12 @@
           "type": "object",
           "additionalProperties": {
             "type": ["number", "integer", "boolean"]
+          }
+        },
+        "application": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "number", "integer", "boolean"]
           }
         },
         "errors": {

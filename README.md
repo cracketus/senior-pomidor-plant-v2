@@ -100,6 +100,7 @@ Important variables:
 - `WIFI_INTERFACE`, `WIFI_PROFILE_DIR`, `WIFI_PREFERRED_PROFILE`: Raspberry Pi Wi-Fi health probe settings.
 - `NETWORK_CHECK_HOST`, `NETWORK_DNS_CHECK_HOST`, `NETWORK_RECOVERY_STATUS_FILE`: network reachability and host recovery status settings.
 - `DISK_USAGE_PATH`: filesystem path used by Raspberry Pi OS disk health probes.
+- `SERVICE_NAME`: optional systemd service name used for application service health checks.
 - `ADS1115_*_DRY_READING` and `ADS1115_*_WET_READING`: raw ADS1115 soil moisture calibration values from `AnalogIn.value`.
 
 MQTT publishes one JSON payload per tick to:
@@ -560,8 +561,13 @@ To install the optional host-level Wi-Fi guard that backs up `.nmconnection` fil
 - Telemetry and photo buffer metrics recursively count regular files under `LOCAL_STORAGE_DIR` and `CAMERA_STORAGE_DIR`. Missing directories report zero files and zero bytes.
 - `recent_io_error_count` counts matching MicroSD, block-device, and filesystem errors in the last hour of the kernel journal. If the journal is unavailable to the container, the probe is reported under `system_health.errors`.
 - `io_wait_percent` keeps reporting the current `psutil` CPU I/O-wait measurement.
+- `heartbeat_utc` is emitted on each telemetry tick and should move forward every `POLL_INTERVAL_SECONDS` while the collector is healthy.
 - `system_health.network.wifi_profile_count` reports stored NetworkManager Wi-Fi profiles. `0` is critical on a Wi-Fi-only edge node because NetworkManager has no saved SSID/security profile to reconnect.
+- `system_health.network.mqtt_broker_reachable`, `http_telemetry_reachable`, and `photo_upload_reachable` are lightweight TCP reachability checks against the configured MQTT, HTTP telemetry, and photo upload endpoints.
+- `system_health.network.telemetry_queue_*` and `photo_queue_*` report locally queued unsent telemetry and pending photo upload files.
+- `system_health.network.interface_*_error_count` and `interface_*_drop_count` expose interface packet error/drop counters when the OS provides them.
 - `system_health.network.last_recovery_exit_code` comes from the optional host Wi-Fi guard status file. `0` means the last guard run completed successfully; non-zero values need host-side investigation.
+- `system_health.application` reports process liveness and uptime. When `SERVICE_NAME` is configured and systemd is available, it also reports service active/substate and main PID.
 
 ### Reading Error Fields
 

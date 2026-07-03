@@ -10,6 +10,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 NetworkValue = bool | float | int | str
 
@@ -22,6 +23,15 @@ def read(
     network_check_host: str = "1.1.1.1",
     network_dns_check_host: str = "example.com",
     recovery_status_file: str = "data/network-recovery/status.json",
+    mqtt_host: str | None = None,
+    mqtt_port: int = 1883,
+    http_enabled: bool = False,
+    core_http_url: str | None = None,
+    photo_upload_enabled: bool = False,
+    photo_upload_url: str | None = None,
+    telemetry_queue_dir: str = "data/telemetry",
+    photo_queue_dir: str = "data/photos",
+    timeout_seconds: float = 2.0,
     mock: bool = False,
 ) -> dict[str, Any]:
     if mock:
@@ -36,6 +46,17 @@ def read(
             "wifi_profile_count": 1,
             "active_profile_present": True,
             "last_recovery_exit_code": 0,
+            "mqtt_broker_reachable": True,
+            "http_telemetry_reachable": True,
+            "photo_upload_reachable": True,
+            "telemetry_queue_file_count": 0,
+            "telemetry_queue_size_bytes": 0,
+            "photo_queue_file_count": 0,
+            "photo_queue_size_bytes": 0,
+            "interface_rx_error_count": 0,
+            "interface_tx_error_count": 0,
+            "interface_rx_drop_count": 0,
+            "interface_tx_drop_count": 0,
         }
         if wifi_preferred_profile:
             mock_metrics["preferred_profile_present"] = True
@@ -58,6 +79,32 @@ def read(
         lambda: read_wifi_profile_metrics(wifi_profile_dir, metrics.get("ssid"), wifi_preferred_profile),
     )
     _probe_metrics(metrics, errors, "network_recovery_status", lambda: read_recovery_status(recovery_status_file))
+    _probe_metrics(
+        metrics,
+        errors,
+        "network_delivery_reachability",
+        lambda: read_delivery_reachability(
+            mqtt_host=mqtt_host,
+            mqtt_port=mqtt_port,
+            http_enabled=http_enabled,
+            core_http_url=core_http_url,
+            photo_upload_enabled=photo_upload_enabled,
+            photo_upload_url=photo_upload_url,
+            timeout_seconds=timeout_seconds,
+        ),
+    )
+    _probe_metrics(
+        metrics,
+        errors,
+        "network_delivery_queues",
+        lambda: read_queue_metrics(telemetry_queue_dir, photo_queue_dir),
+    )
+    _probe_metrics(
+        metrics,
+        errors,
+        "network_interface_counters",
+        lambda: read_interface_counters(str(metrics.get("interface_name") or wifi_interface)),
+    )
 
     if errors:
         metrics["errors"] = errors
@@ -265,6 +312,51 @@ def read_recovery_status(recovery_status_file: str) -> dict[str, NetworkValue]:
     return metrics
 
 
+def read_delivery_reachability(
+    *,
+    mqtt_host: str | None,
+    mqtt_port: int,
+    http_enabled: bool,
+    core_http_url: str | None,
+    photo_upload_enabled: bool,
+    photo_upload_url: str | None,
+    timeout_seconds: float,
+) -> dict[str, NetworkValue]:
+    metrics: dict[str, NetworkValue] = {}
+    if mqtt_host:
+        metrics["mqtt_broker_reachable"] = _tcp_reachable(mqtt_host, mqtt_port, timeout_seconds)
+    if http_enabled and core_http_url:
+        metrics["http_telemetry_reachable"] = _url_reachable(core_http_url, timeout_seconds)
+    if photo_upload_enabled and photo_upload_url:
+        metrics["photo_upload_reachable"] = _url_reachable(photo_upload_url, timeout_seconds)
+    return metrics
+
+
+def read_queue_metrics(telemetry_queue_dir: str, photo_queue_dir: str) -> dict[str, NetworkValue]:
+    telemetry_files = _regular_files(Path(telemetry_queue_dir), "*.json")
+    photo_files = _pending_photo_files(Path(photo_queue_dir))
+    return {
+        "telemetry_queue_file_count": len(telemetry_files),
+        "telemetry_queue_size_bytes": sum(_safe_size(path) for path in telemetry_files),
+        "photo_queue_file_count": len(photo_files),
+        "photo_queue_size_bytes": sum(_safe_size(path) for path in photo_files),
+    }
+
+
+def read_interface_counters(interface: str) -> dict[str, NetworkValue]:
+    import psutil
+
+    counters = psutil.net_io_counters(pernic=True).get(interface)
+    if counters is None:
+        raise RuntimeError(f"Network interface counters for {interface} are unavailable")
+    return {
+        "interface_rx_error_count": int(counters.errin),
+        "interface_tx_error_count": int(counters.errout),
+        "interface_rx_drop_count": int(counters.dropin),
+        "interface_tx_drop_count": int(counters.dropout),
+    }
+
+
 def _probe_metrics(
     metrics: dict[str, Any],
     errors: list[dict[str, str]],
@@ -294,6 +386,27 @@ def _host_reachable(host: str | None) -> bool:
             return True
     except OSError:
         return False
+
+
+def _tcp_reachable(host: str, port: int, timeout_seconds: float) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout_seconds):
+            return True
+    except OSError:
+        return False
+
+
+def _url_reachable(url: str, timeout_seconds: float) -> bool:
+    parsed = urlparse(url)
+    if not parsed.hostname:
+        return False
+    if parsed.port:
+        port = parsed.port
+    elif parsed.scheme == "https":
+        port = 443
+    else:
+        port = 80
+    return _tcp_reachable(parsed.hostname, port, timeout_seconds)
 
 
 def _dns_resolves(host: str) -> bool:
@@ -346,3 +459,31 @@ def _ip_address_from_psutil(addresses: list[Any]) -> str | None:
         if address.family == socket.AF_INET:
             return str(address.address)
     return None
+
+
+def _regular_files(directory: Path, pattern: str) -> list[Path]:
+    if not directory.exists():
+        return []
+    return sorted(path for path in directory.glob(pattern) if path.is_file())
+
+
+def _pending_photo_files(directory: Path) -> list[Path]:
+    pending: list[Path] = []
+    for metadata_path in _regular_files(directory, "*.json"):
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(metadata, dict) or metadata.get("upload_status") == "uploaded":
+            continue
+        image_path = directory / str(metadata.get("file_name") or metadata_path.with_suffix(".jpg").name)
+        if image_path.exists():
+            pending.extend([metadata_path, image_path])
+    return pending
+
+
+def _safe_size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0

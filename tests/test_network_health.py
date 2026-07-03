@@ -144,6 +144,87 @@ def test_network_health_reads_recovery_status(tmp_path) -> None:
     }
 
 
+def test_network_health_reads_delivery_reachability(monkeypatch) -> None:
+    calls = []
+
+    def fake_tcp(host, port, timeout):
+        calls.append((host, port, timeout))
+        return host != "offline.local"
+
+    monkeypatch.setattr(network_health, "_tcp_reachable", fake_tcp)
+
+    assert network_health.read_delivery_reachability(
+        mqtt_host="mqtt.local",
+        mqtt_port=1883,
+        http_enabled=True,
+        core_http_url="https://core.local/api/v1/edge/telemetry",
+        photo_upload_enabled=True,
+        photo_upload_url="http://offline.local/api/v1/edge/photos",
+        timeout_seconds=1.5,
+    ) == {
+        "mqtt_broker_reachable": True,
+        "http_telemetry_reachable": True,
+        "photo_upload_reachable": False,
+    }
+    assert calls == [
+        ("mqtt.local", 1883, 1.5),
+        ("core.local", 443, 1.5),
+        ("offline.local", 80, 1.5),
+    ]
+
+
+def test_network_health_reads_queue_metrics(tmp_path) -> None:
+    telemetry_dir = tmp_path / "telemetry"
+    photo_dir = tmp_path / "photos"
+    telemetry_dir.mkdir()
+    photo_dir.mkdir()
+    (telemetry_dir / "queued.json").write_text("{}", encoding="utf-8")
+    (photo_dir / "pending.jpg").write_bytes(b"jpeg")
+    (photo_dir / "pending.json").write_text(
+        json.dumps({"file_name": "pending.jpg", "upload_status": "pending"}),
+        encoding="utf-8",
+    )
+    (photo_dir / "uploaded.jpg").write_bytes(b"old")
+    (photo_dir / "uploaded.json").write_text(
+        json.dumps({"file_name": "uploaded.jpg", "upload_status": "uploaded"}),
+        encoding="utf-8",
+    )
+
+    assert network_health.read_queue_metrics(str(telemetry_dir), str(photo_dir)) == {
+        "telemetry_queue_file_count": 1,
+        "telemetry_queue_size_bytes": 2,
+        "photo_queue_file_count": 2,
+        "photo_queue_size_bytes": len(b"jpeg")
+        + len(json.dumps({"file_name": "pending.jpg", "upload_status": "pending"})),
+    }
+
+
+def test_network_health_reads_interface_counters(monkeypatch) -> None:
+    fake_psutil = types.SimpleNamespace(
+        net_io_counters=lambda pernic=True: {"wlan0": types.SimpleNamespace(errin=1, errout=2, dropin=3, dropout=4)}
+    )
+    monkeypatch.setitem(sys.modules, "psutil", fake_psutil)
+
+    assert network_health.read_interface_counters("wlan0") == {
+        "interface_rx_error_count": 1,
+        "interface_tx_error_count": 2,
+        "interface_rx_drop_count": 3,
+        "interface_tx_drop_count": 4,
+    }
+
+
+def test_network_health_reports_unavailable_interface_counters(monkeypatch) -> None:
+    fake_psutil = types.SimpleNamespace(net_io_counters=lambda pernic=True: {})
+    monkeypatch.setitem(sys.modules, "psutil", fake_psutil)
+
+    try:
+        network_health.read_interface_counters("wlan0")
+    except RuntimeError as exc:
+        assert str(exc) == "Network interface counters for wlan0 are unavailable"
+    else:
+        raise AssertionError("Expected unavailable interface counters to raise RuntimeError")
+
+
 def test_network_health_keeps_partial_metrics_on_command_failure(monkeypatch, tmp_path) -> None:
     def fake_run(command, **_kwargs):
         if command[:3] == ["nmcli", "-t", "-f"]:
@@ -163,6 +244,7 @@ def test_network_health_keeps_partial_metrics_on_command_failure(monkeypatch, tm
         net_if_addrs=lambda: {
             "wlan0": [],
         },
+        net_io_counters=lambda pernic=True: {"wlan0": types.SimpleNamespace(errin=0, errout=0, dropin=0, dropout=0)},
     )
     monkeypatch.setitem(sys.modules, "psutil", fake_psutil)
 
@@ -178,4 +260,12 @@ def test_network_health_keeps_partial_metrics_on_command_failure(monkeypatch, tm
         "internet_reachable": True,
         "wifi_profile_count": 0,
         "active_profile_present": False,
+        "telemetry_queue_file_count": 0,
+        "telemetry_queue_size_bytes": 0,
+        "photo_queue_file_count": 0,
+        "photo_queue_size_bytes": 0,
+        "interface_rx_error_count": 0,
+        "interface_tx_error_count": 0,
+        "interface_rx_drop_count": 0,
+        "interface_tx_drop_count": 0,
     }

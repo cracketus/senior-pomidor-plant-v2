@@ -172,6 +172,16 @@ Inspect the network health fields under `system_health.network`:
 - `active_profile_present` should be `true` when the active SSID has a matching `.nmconnection` profile.
 - `preferred_profile_present` should be `true` when `WIFI_PREFERRED_PROFILE` is configured.
 - `last_recovery_exit_code` should be `0` when the optional host Wi-Fi guard is installed.
+- `mqtt_broker_reachable`, `http_telemetry_reachable`, and `photo_upload_reachable` should be `true` when the matching transport is configured.
+- `telemetry_queue_file_count` and `photo_queue_file_count` should not grow across multiple telemetry intervals.
+- Interface error/drop counters should stay flat during normal operation; increasing values point to Wi-Fi, cabling, driver, or AP issues.
+
+Inspect the application health fields under `system_health.application`:
+
+- `process_running` should be `true`.
+- `process_uptime_seconds` should increase between telemetry ticks unless the collector restarted.
+- `systemd_service_active` should be `true` when `SERVICE_NAME` is configured and the edge client runs as a systemd service.
+- The payload-level `heartbeat_utc` should advance every telemetry interval while ingestion is fresh.
 
 If `system_health.errors` contains `rpi_recent_io_errors`, the container cannot read the kernel journal. Check the host directly:
 
