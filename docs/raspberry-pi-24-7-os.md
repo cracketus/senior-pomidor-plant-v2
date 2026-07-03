@@ -93,7 +93,7 @@ Clone or copy this repository to the Raspberry Pi, then run the existing hardwar
 chmod +x scripts/setup_raspberry_pi.sh
 ./scripts/setup_raspberry_pi.sh \
   --hardware \
-  --mqtt-host 192.168.1.10 \
+  --mqtt-host 192.0.2.10 \
   --device-id balcony-edge-01 \
   --auto-reboot
 ```
