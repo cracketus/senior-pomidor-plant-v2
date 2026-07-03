@@ -2,9 +2,9 @@
 
 All notable public changes will be documented in this file.
 
-## v0.1.0-alpha - Unreleased
+## v0.1.0 - 2026-07-03
 
-First public alpha candidate for the Senior Pomidor Raspberry Pi edge-node repository.
+First stable release for the Senior Pomidor Raspberry Pi edge-node repository.
 
 ### Added
 

@@ -1,6 +1,6 @@
-# Senior Pomidor Edge Node v0.1.0-alpha
+# Senior Pomidor Edge Node v0.1.0
 
-First public release candidate for the Senior Pomidor Raspberry Pi edge-node repository.
+First stable release for the Senior Pomidor Raspberry Pi edge-node repository.
 
 ## Highlights
 

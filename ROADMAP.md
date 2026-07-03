@@ -1,6 +1,6 @@
 # Roadmap
 
-## v0.1.0-alpha
+## v0.1.0
 
 - Publish the Raspberry Pi edge-node foundation.
 - Keep telemetry, event, and photo contracts stable enough for early Core integration.

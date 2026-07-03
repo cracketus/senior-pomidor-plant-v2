@@ -11,7 +11,7 @@ This repository contains only the balcony hardware and telemetry collection laye
 
 ## Current Status
 
-This `v0.1.0-alpha` release is an edge-node foundation, not the full Senior Pomidor platform.
+This `v0.1.0` release is an edge-node foundation, not the full Senior Pomidor platform.
 
 - This repository contains the Raspberry Pi edge node only.
 - Core server, database, dashboards, state estimation, AI/VLM processing, and public datasets live outside this runtime scope.
