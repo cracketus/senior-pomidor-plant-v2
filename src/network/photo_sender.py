@@ -53,8 +53,9 @@ class HttpPhotoSender:
             "device_id": str(metadata.get("device_id", self.settings.device_id)),
             "captured_at_utc": str(metadata.get("captured_at_utc", "")),
             "schema_version": PHOTO_SCHEMA_VERSION,
-            "sharpness_score": str(metadata.get("sharpness_score", "")),
         }
+        if metadata.get("sharpness_score") is not None:
+            data["sharpness_score"] = str(metadata["sharpness_score"])
 
         try:
             post = self.post_func or _requests_post
@@ -87,11 +88,4 @@ def _requests_post(*args: Any, **kwargs: Any) -> Any:
 
 
 def _is_success(response: Any) -> bool:
-    status_code = getattr(response, "status_code", None)
-    if isinstance(status_code, int):
-        return 200 <= status_code <= 299
-    try:
-        response.raise_for_status()
-    except Exception:  # noqa: BLE001 - response compatibility fallback
-        return False
-    return True
+    return getattr(response, "status_code", None) in {200, 202}

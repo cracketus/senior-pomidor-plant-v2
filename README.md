@@ -551,8 +551,12 @@ To install the optional host-level Wi-Fi guard that backs up `.nmconnection` fil
 - MLX90615/MLX90614 leaf temperature is line-of-sight. Reflective, wet, or off-target leaves can produce surprising values.
 - Wi-Fi RSSI is in dBm. Values around `-30` are strong, around `-70` are weak but usable, and below `-80` are unreliable.
 - CPU temperature is Celsius. Sustained values near throttling range mean the Pi needs better airflow, a heatsink, or lower enclosure temperature.
+- `under_voltage_now`, `frequency_capped_now`, and `throttled_now` come from `vcgencmd get_throttled`; any `true` value means the Pi is currently power- or thermal-limited.
+- `under_voltage_seen`, `frequency_capped_seen`, and `throttled_seen` are historical flags since boot; treat them as warning evidence even if current flags are clear.
 - VPD metrics are in kPa. `air_vpd_kpa` requires `air_temperature_c` and `air_humidity_percent`; `leaf_vpd_kpa` also requires `leaf_temp_c`. If BME280 fails, no VPD fields are emitted for that tick.
 - Disk total, used, free, and percentage values come from `psutil`. `filesystem_read_only` is derived from the mount options for `DISK_USAGE_PATH`; set that path to the root filesystem or the mounted local-storage filesystem you need to monitor.
+- `memory_usage_percent`, `memory_available_bytes`, `swap_usage_percent`, and `swap_available_bytes` show RAM and swap pressure.
+- `load_average_1m`, `load_average_5m`, `load_average_15m`, and `uptime_seconds` help operators distinguish sustained overload from a recent reboot.
 - Telemetry and photo buffer metrics recursively count regular files under `LOCAL_STORAGE_DIR` and `CAMERA_STORAGE_DIR`. Missing directories report zero files and zero bytes.
 - `recent_io_error_count` counts matching MicroSD, block-device, and filesystem errors in the last hour of the kernel journal. If the journal is unavailable to the container, the probe is reported under `system_health.errors`.
 - `io_wait_percent` keeps reporting the current `psutil` CPU I/O-wait measurement.

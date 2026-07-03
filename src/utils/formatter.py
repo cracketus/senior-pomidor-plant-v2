@@ -113,7 +113,9 @@ def _merge_health_metrics(reading: Any, metrics: dict[str, Any], errors: list[di
     for key, value in reading.items():
         if key == "errors":
             continue
-        if isinstance(value, bool | str) or (isinstance(value, int) and key.endswith(("_bytes", "_count", "_code"))):
+        if isinstance(value, bool | str) or (
+            isinstance(value, int) and key.endswith(("_bytes", "_count", "_code", "_seconds"))
+        ):
             metrics[key] = value
         elif isinstance(value, (int, float)):
             metrics[key] = float(value)

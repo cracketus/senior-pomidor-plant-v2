@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from src.config import ConfigError, Settings, load_config
+from src.config import ConfigError, Settings, load_config, public_settings
 from src.network.http_sender import HttpSender
 from src.network.mqtt_sender import MqttSender
 from src.network.photo_sender import HttpPhotoSender
@@ -114,6 +114,7 @@ def run(
         settings.device_id,
         settings.mock_sensors,
     )
+    logger.info("Effective configuration: %s", public_settings(settings))
     while True:
         tick += 1
         _replay_pending_telemetry(settings, mqtt_sender, http_sender, logger=logger)

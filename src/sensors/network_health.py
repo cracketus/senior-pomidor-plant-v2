@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 import socket
+import struct
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -63,22 +65,59 @@ def read(
 
 
 def read_interface_state(interface: str) -> dict[str, NetworkValue]:
-    output = _run(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device", "status"])
-    device_status = parse_nmcli_device_status(output.stdout, interface)
-    if device_status is None:
-        raise RuntimeError(f"NetworkManager device status for {interface} is unavailable")
+    try:
+        output = _run(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device", "status"])
+        device_status = parse_nmcli_device_status(output.stdout, interface)
+    except RuntimeError:
+        device_status = None
 
+    if device_status is None:
+        return read_interface_state_fallback(interface)
+
+    resolved_interface = device_status["device"]
+    interface_type = device_status["type"]
+    connected = device_status["state"] == "connected"
     metrics: dict[str, NetworkValue] = {
-        "wifi_connected": device_status["state"] == "connected",
+        "wifi_connected": connected if interface_type == "wifi" else False,
         "interface_up": device_status["state"] not in {"unavailable", "unmanaged", "disconnected"},
+        "interface_name": resolved_interface,
+        "interface_type": interface_type,
     }
     connection = device_status.get("connection", "")
-    if connection and connection != "--":
+    if interface_type == "wifi" and connection and connection != "--":
         metrics["ssid"] = connection
 
-    ip_address = read_ip_address(interface)
+    ip_address = read_ip_address(resolved_interface)
     if ip_address:
         metrics["ip_address"] = ip_address
+    return metrics
+
+
+def read_interface_state_fallback(preferred_interface: str) -> dict[str, NetworkValue]:
+    import psutil
+
+    stats = psutil.net_if_stats()
+    addrs = psutil.net_if_addrs()
+    route_interface, _gateway_ip = read_default_route()
+    interface = _select_interface(preferred_interface, route_interface, stats)
+    if not interface:
+        raise RuntimeError(f"Network interface status for {preferred_interface} is unavailable")
+
+    interface_stats = stats.get(interface)
+    interface_type = "wifi" if interface.startswith(("wl", "wlan")) else "ethernet"
+    metrics: dict[str, NetworkValue] = {
+        "wifi_connected": bool(interface_stats and interface_stats.isup) if interface_type == "wifi" else False,
+        "interface_up": bool(interface_stats and interface_stats.isup),
+        "interface_name": interface,
+        "interface_type": interface_type,
+    }
+    ip_address = _ip_address_from_psutil(addrs.get(interface, []))
+    if ip_address:
+        metrics["ip_address"] = ip_address
+    if interface_type == "wifi":
+        ssid = read_wifi_ssid(interface)
+        if ssid:
+            metrics["ssid"] = ssid
     return metrics
 
 
@@ -101,7 +140,11 @@ def parse_nmcli_device_status(text: str, interface: str) -> dict[str, str] | Non
 def read_ip_address(interface: str) -> str | None:
     output = _run(["ip", "-4", "-o", "addr", "show", "dev", interface], check=False)
     if output.returncode != 0:
-        return None
+        try:
+            import psutil
+        except ImportError:
+            return None
+        return _ip_address_from_psutil(psutil.net_if_addrs().get(interface, []))
     return parse_ip_addr_show(output.stdout)
 
 
@@ -116,11 +159,13 @@ def parse_ip_addr_show(text: str) -> str | None:
 def read_reachability(network_check_host: str, network_dns_check_host: str) -> dict[str, NetworkValue]:
     gateway = _run(["ip", "route", "show", "default"], check=False)
     gateway_ip = parse_default_gateway(gateway.stdout) if gateway.returncode == 0 else None
+    if gateway_ip is None:
+        _route_interface, gateway_ip = read_default_route()
 
     metrics: dict[str, NetworkValue] = {
-        "default_gateway_reachable": _ping(gateway_ip) if gateway_ip else False,
+        "default_gateway_reachable": _host_reachable(gateway_ip) if gateway_ip else False,
         "dns_resolution_ok": _dns_resolves(network_dns_check_host),
-        "internet_reachable": _ping(network_check_host),
+        "internet_reachable": _host_reachable(network_check_host),
     }
     return metrics
 
@@ -131,6 +176,45 @@ def parse_default_gateway(text: str) -> str | None:
         if part == "via" and index + 1 < len(parts):
             return parts[index + 1]
     return None
+
+
+def read_wifi_ssid(interface: str) -> str | None:
+    output = _run(["iwgetid", "-r", interface], check=False)
+    if output.returncode == 0 and output.stdout.strip():
+        return output.stdout.strip()
+
+    output = _run(["iwconfig", interface], check=False)
+    if output.returncode == 0:
+        return parse_iwconfig_essid(output.stdout + output.stderr)
+    return None
+
+
+def parse_iwconfig_essid(text: str) -> str | None:
+    match = re.search(r'ESSID:"([^"]+)"', text)
+    if not match:
+        return None
+    ssid = match.group(1)
+    if not ssid or ssid.lower() == "off/any":
+        return None
+    return ssid
+
+
+def read_default_route(route_path: Path = Path("/proc/net/route")) -> tuple[str | None, str | None]:
+    try:
+        lines = route_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None, None
+
+    for line in lines[1:]:
+        fields = line.split()
+        if len(fields) < 3 or fields[1] != "00000000":
+            continue
+        try:
+            gateway = socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
+        except (OSError, ValueError, struct.error):
+            gateway = None
+        return fields[0], gateway
+    return None, None
 
 
 def read_wifi_profile_metrics(
@@ -200,6 +284,18 @@ def _ping(host: str | None) -> bool:
     return output.returncode == 0
 
 
+def _host_reachable(host: str | None) -> bool:
+    if not host:
+        return False
+    if _ping(host):
+        return True
+    try:
+        with socket.create_connection((host, 53), timeout=2):
+            return True
+    except OSError:
+        return False
+
+
 def _dns_resolves(host: str) -> bool:
     try:
         socket.getaddrinfo(host, None)
@@ -209,14 +305,44 @@ def _dns_resolves(host: str) -> bool:
 
 
 def _run(command: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
-    output = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        timeout=3,
-        check=False,
-    )
+    try:
+        output = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        if check:
+            raise RuntimeError(f"{command[0]} is unavailable") from exc
+        return subprocess.CompletedProcess(command, 127, "", str(exc))
     if check and output.returncode != 0:
         message = (output.stderr or output.stdout).strip() or f"{command[0]} exited with {output.returncode}"
         raise RuntimeError(message)
     return output
+
+
+def _select_interface(
+    preferred_interface: str,
+    route_interface: str | None,
+    stats: dict[str, Any],
+) -> str | None:
+    preferred_stats = stats.get(preferred_interface)
+    if preferred_stats and preferred_stats.isup:
+        return preferred_interface
+    if route_interface in stats:
+        return route_interface
+    if preferred_interface in stats:
+        return preferred_interface
+    for name, interface_stats in stats.items():
+        if name != "lo" and interface_stats.isup:
+            return name
+    return None
+
+
+def _ip_address_from_psutil(addresses: list[Any]) -> str | None:
+    for address in addresses:
+        if address.family == socket.AF_INET:
+            return str(address.address)
+    return None

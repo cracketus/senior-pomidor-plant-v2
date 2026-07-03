@@ -158,6 +158,27 @@ def mqtt_event_topic(settings: Settings) -> str:
     return f"{settings.mqtt_topic_prefix}/{settings.device_id}/events"
 
 
+def public_settings(settings: Settings) -> dict[str, object]:
+    return {
+        "device_id": settings.device_id,
+        "poll_interval_seconds": settings.poll_interval_seconds,
+        "mock_sensors": settings.mock_sensors,
+        "mqtt_host": settings.mqtt_host,
+        "mqtt_port": settings.mqtt_port,
+        "mqtt_topic_prefix": settings.mqtt_topic_prefix,
+        "mqtt_tls": settings.mqtt_tls,
+        "http_enabled": settings.http_enabled,
+        "core_http_url": settings.core_http_url,
+        "photo_upload_enabled": settings.photo_upload_enabled,
+        "photo_upload_url": settings.photo_upload_url,
+        "camera_enabled": settings.camera_enabled,
+        "local_storage_dir": settings.local_storage_dir,
+        "local_event_dir": settings.local_event_dir,
+        "wifi_interface": settings.wifi_interface,
+        "disk_usage_path": settings.disk_usage_path,
+    }
+
+
 def _load_dotenv_file() -> None:
     try:
         dotenv = importlib.import_module("dotenv")
