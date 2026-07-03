@@ -90,3 +90,24 @@ Core consumers should:
 - Return 2xx only after durable acceptance of HTTP telemetry or photo uploads.
 
 Core consumers should not assume the edge node performs state estimation beyond VPD metrics, weather enrichment, actuation decisions, anomaly classification, dashboard storage, or AI/VLM analysis.
+
+## Compatibility Check
+
+Run `python scripts/compatibility_check.py --env-file .env` on the Raspberry Pi to verify the active Core integration.
+
+The command:
+
+- publishes one MQTT telemetry payload
+- posts the same telemetry payload to `CORE_HTTP_URL`
+- uploads one generated JPEG to `PHOTO_UPLOAD_URL`
+- performs GET checks against telemetry and photo metadata read APIs
+- prints pass/fail status for every step and exits non-zero on any failure
+
+Set read API URLs with command flags or environment variables:
+
+```bash
+CORE_TELEMETRY_READ_URL='http://core.local:8000/api/v1/edge/telemetry?device_id=balcony-edge-01'
+PHOTO_METADATA_READ_URL='http://core.local:8000/api/v1/edge/photos?device_id=balcony-edge-01'
+```
+
+If read URLs are omitted, the command appends query parameters to `CORE_HTTP_URL` and `PHOTO_UPLOAD_URL`.
