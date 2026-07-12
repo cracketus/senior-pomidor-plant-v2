@@ -630,9 +630,9 @@ docker compose up --build -d
 
 The hardware compose file can be parsed without `.env`, but the app still requires real MQTT and sensor configuration at runtime. It installs `requirements-hardware.txt`, including `rpi-lgpio` for the `RPi.GPIO` compatibility module on Raspberry Pi OS Bookworm, persists telemetry and photos to `./data`, and is Linux/Raspberry Pi specific because it passes through hardware host paths. Camera-enabled Docker deployments use `/dev/video0` by default; the setup script installs `fswebcam`, `v4l-utils`, `libgpiod2`, and `wireless-tools`, and the compose file runs privileged with host networking plus `/run/udev` mounted for Raspberry Pi hardware and Wi-Fi RSSI access.
 
-## Public Status Page
+## Public Project Page
 
-The tracked [index.html](index.html) is a static public status page shell for GitHub Pages or another static host. It reads a status JSON document matching [status/status.sample.json](status/status.sample.json); the sample file is documentation and test data, not live service status.
+The tracked [index.html](index.html) is the static project page hosted at [cracketus.dev](https://cracketus.dev/). It links to the public Grafana Cloud dashboard for live metrics.
 
 ## Examples
 
