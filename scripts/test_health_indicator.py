@@ -8,10 +8,16 @@ or a maintenance window on the Raspberry Pi after electrical validation.
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
 
-from src.indicator.adapter import MockIndicatorAdapter, RaspberryPiGpioAdapter
-from src.indicator.controller import IndicatorController
-from src.indicator.model import EdgeHealthState
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from src.indicator.adapter import MockIndicatorAdapter, RaspberryPiGpioAdapter  # noqa: E402
+from src.indicator.controller import IndicatorController  # noqa: E402
+from src.indicator.model import EdgeHealthState  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
