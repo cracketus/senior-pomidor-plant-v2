@@ -1,12 +1,20 @@
-import json
-import os
+import pytest
 
 from src.config import load_config
-from src.main import TELEMETRY_REPLAY_BATCH_SIZE, _replay_pending_telemetry, collect_readings, run
+from src.main import collect_readings, run
+
+
+def _load_config(env):
+    values = {
+        "HTTP_ENABLED": "true",
+        "CORE_HTTP_URL": "https://core.example/telemetry",
+    }
+    values.update(env)
+    return load_config(values)
 
 
 def test_collect_readings_skips_disabled_pod2() -> None:
-    settings = load_config(
+    settings = _load_config(
         {
             "MQTT_HOST": "core.local",
             "MOCK_SENSORS": "true",
@@ -23,7 +31,7 @@ def test_collect_readings_skips_disabled_pod2() -> None:
 
 
 def test_collect_readings_reads_bme280_once_as_shared_sensor(monkeypatch) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "MOCK_SENSORS": "true"})
+    settings = _load_config({"MQTT_HOST": "core.local", "MOCK_SENSORS": "true"})
     calls = []
 
     def fake_bme280_read(**kwargs):
@@ -39,162 +47,28 @@ def test_collect_readings_reads_bme280_once_as_shared_sensor(monkeypatch) -> Non
 
 
 def test_run_includes_health_payload(monkeypatch) -> None:
-    settings = load_config(
+    settings = _load_config(
         {
             "MQTT_HOST": "core.local",
             "MOCK_SENSORS": "true",
             "MAX_TICKS": "1",
         }
     )
-    saved_payloads = []
-    sent_payloads = []
+    repository = FakeRepository()
+    worker = FakeWorker(repository.events)
 
-    monkeypatch.setattr("src.main.save_payload", lambda _settings, payload, **_kwargs: saved_payloads.append(payload))
-    monkeypatch.setattr("src.main.MqttSender.publish", lambda _sender, payload: sent_payloads.append(payload) or True)
+    run(settings, repository=repository, delivery_worker=worker, sleep=lambda _seconds: None)
 
-    run(settings, sleep=lambda _seconds: None)
-
-    assert saved_payloads[0]["system_health"]["rpi_core"]["wifi_rssi_dbm"] == -68.0
-    assert saved_payloads[0]["system_health"]["application"]["process_running"] is True
-    assert sent_payloads[0]["system_health"]["pod_1_hardware"]["bus_current_ma"] == 12.4
-
-
-def test_run_deletes_current_payload_after_successful_live_send(monkeypatch, tmp_path) -> None:
-    settings = load_config(
-        {
-            "MQTT_HOST": "core.local",
-            "MOCK_SENSORS": "true",
-            "MAX_TICKS": "1",
-            "LOCAL_STORAGE_DIR": str(tmp_path),
-        }
-    )
-    payload = {
-        "schema_version": "senior-pomidor.edge.telemetry.v2",
-        "device_id": settings.device_id,
-        "timestamp_utc": "2026-06-06T10:00:00Z",
-        "pods": {},
-    }
-
-    monkeypatch.setattr("src.main.collect_readings", lambda _settings: {"pod_1": {}, "pod_2": {}, "shared": {}})
-    monkeypatch.setattr("src.main.format_payload", lambda _settings, _readings: payload)
-    monkeypatch.setattr("src.main.MqttSender.publish", lambda *_args, **_kwargs: True)
-
-    run(settings, sleep=lambda _seconds: None)
-
-    assert list(tmp_path.glob("*.json")) == []
-
-
-def test_run_keeps_current_payload_after_failed_live_send(monkeypatch, tmp_path) -> None:
-    settings = load_config(
-        {
-            "MQTT_HOST": "core.local",
-            "MOCK_SENSORS": "true",
-            "MAX_TICKS": "1",
-            "LOCAL_STORAGE_DIR": str(tmp_path),
-        }
-    )
-    payload = {
-        "schema_version": "senior-pomidor.edge.telemetry.v2",
-        "device_id": settings.device_id,
-        "timestamp_utc": "2026-06-06T10:00:00Z",
-        "pods": {},
-    }
-
-    monkeypatch.setattr("src.main.collect_readings", lambda _settings: {"pod_1": {}, "pod_2": {}, "shared": {}})
-    monkeypatch.setattr("src.main.format_payload", lambda _settings, _readings: payload)
-    monkeypatch.setattr("src.main.MqttSender.publish", lambda *_args, **_kwargs: False)
-
-    run(settings, sleep=lambda _seconds: None)
-
-    saved_files = list(tmp_path.glob("*.json"))
-    assert len(saved_files) == 1
-    assert json.loads(saved_files[0].read_text(encoding="utf-8")) == payload
-
-
-def test_replay_deletes_queued_payload_after_mqtt_success(tmp_path) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "LOCAL_STORAGE_DIR": str(tmp_path)})
-    queued_file = _write_queued_payload(tmp_path, "old.json", "2026-06-06T10:00:00Z")
-    mqtt_sender = FakeTelemetrySender(results=[True])
-    http_sender = FakeTelemetrySender(results=[])
-
-    delivered = _replay_pending_telemetry(settings, mqtt_sender, http_sender, logger=NullLogger())
-
-    assert delivered == 1
-    assert not queued_file.exists()
-    assert mqtt_sender.payloads[0]["timestamp_utc"] == "2026-06-06T10:00:00Z"
-    assert http_sender.payloads == []
-
-
-def test_replay_uses_http_fallback_when_mqtt_fails(tmp_path) -> None:
-    settings = load_config(
-        {
-            "MQTT_HOST": "core.local",
-            "HTTP_ENABLED": "true",
-            "CORE_HTTP_URL": "https://core.example/telemetry",
-            "LOCAL_STORAGE_DIR": str(tmp_path),
-        }
-    )
-    queued_file = _write_queued_payload(tmp_path, "old.json", "2026-06-06T10:00:00Z")
-    mqtt_sender = FakeTelemetrySender(results=[False])
-    http_sender = FakeTelemetrySender(results=[True])
-
-    delivered = _replay_pending_telemetry(settings, mqtt_sender, http_sender, logger=NullLogger())
-
-    assert delivered == 1
-    assert not queued_file.exists()
-    assert http_sender.payloads[0]["timestamp_utc"] == "2026-06-06T10:00:00Z"
-
-
-def test_replay_keeps_queue_and_stops_after_first_delivery_failure(tmp_path) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "LOCAL_STORAGE_DIR": str(tmp_path)})
-    failed_file = _write_queued_payload(tmp_path, "failed.json", "2026-06-06T10:00:00Z")
-    later_file = _write_queued_payload(tmp_path, "later.json", "2026-06-06T10:01:00Z")
-    os.utime(failed_file, (1, 1))
-    os.utime(later_file, (2, 2))
-    mqtt_sender = FakeTelemetrySender(results=[False, True])
-    http_sender = FakeTelemetrySender(results=[])
-
-    delivered = _replay_pending_telemetry(settings, mqtt_sender, http_sender, logger=NullLogger())
-
-    assert delivered == 0
-    assert failed_file.exists()
-    assert later_file.exists()
-    assert len(mqtt_sender.payloads) == 1
-
-
-def test_replay_skips_corrupt_file_and_continues(tmp_path) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "LOCAL_STORAGE_DIR": str(tmp_path)})
-    corrupt_file = tmp_path / "corrupt.json"
-    corrupt_file.write_text("{invalid", encoding="utf-8")
-    valid_file = _write_queued_payload(tmp_path, "valid.json", "2026-06-06T10:01:00Z")
-    os.utime(corrupt_file, (1, 1))
-    os.utime(valid_file, (2, 2))
-    mqtt_sender = FakeTelemetrySender(results=[True])
-    http_sender = FakeTelemetrySender(results=[])
-
-    delivered = _replay_pending_telemetry(settings, mqtt_sender, http_sender, logger=NullLogger())
-
-    assert delivered == 1
-    assert corrupt_file.exists()
-    assert not valid_file.exists()
-
-
-def test_replay_processes_at_most_batch_size(tmp_path) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "LOCAL_STORAGE_DIR": str(tmp_path)})
-    for index in range(TELEMETRY_REPLAY_BATCH_SIZE + 1):
-        queued_file = _write_queued_payload(tmp_path, f"{index:02d}.json", f"2026-06-06T10:{index:02d}:00Z")
-        os.utime(queued_file, (index, index))
-    mqtt_sender = FakeTelemetrySender(results=[True] * (TELEMETRY_REPLAY_BATCH_SIZE + 1))
-    http_sender = FakeTelemetrySender(results=[])
-
-    delivered = _replay_pending_telemetry(settings, mqtt_sender, http_sender, logger=NullLogger())
-
-    assert delivered == TELEMETRY_REPLAY_BATCH_SIZE
-    assert len(list(tmp_path.glob("*.json"))) == 1
+    stored = repository.payloads[0]
+    assert stored["system_health"]["rpi_core"]["wifi_rssi_dbm"] == -68.0
+    assert stored["system_health"]["application"]["process_running"] is True
+    assert stored["system_health"]["pod_1_hardware"]["bus_current_ma"] == 12.4
+    assert stored["system_health"]["spool"]["status"] == "OK"
+    assert repository.events.index("enqueue") < repository.events.index("notify")
 
 
 def test_run_captures_camera_when_interval_is_due(monkeypatch) -> None:
-    settings = load_config(
+    settings = _load_config(
         {
             "MQTT_HOST": "core.local",
             "MOCK_SENSORS": "true",
@@ -210,8 +84,8 @@ def test_run_captures_camera_when_interval_is_due(monkeypatch) -> None:
     photo_sender = FakePhotoSender()
 
     monkeypatch.setattr("src.main.collect_readings", lambda _settings: {"pod_1": {}, "pod_2": {}, "shared": {}})
-    monkeypatch.setattr("src.main.save_payload", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("src.main.MqttSender.publish", lambda *_args, **_kwargs: True)
+    repository = FakeRepository()
+    worker = FakeWorker(repository.events)
 
     run(
         settings,
@@ -219,6 +93,8 @@ def test_run_captures_camera_when_interval_is_due(monkeypatch) -> None:
         photo_sender=photo_sender,
         sleep=lambda _seconds: None,
         monotonic=lambda: next(clock_values),
+        repository=repository,
+        delivery_worker=worker,
     )
 
     assert captures == ["capture", "capture"]
@@ -226,7 +102,7 @@ def test_run_captures_camera_when_interval_is_due(monkeypatch) -> None:
 
 
 def test_run_skips_camera_when_disabled(monkeypatch) -> None:
-    settings = load_config(
+    settings = _load_config(
         {
             "MQTT_HOST": "core.local",
             "MOCK_SENSORS": "true",
@@ -237,16 +113,50 @@ def test_run_skips_camera_when_disabled(monkeypatch) -> None:
     captures = []
 
     monkeypatch.setattr("src.main.collect_readings", lambda _settings: {"pod_1": {}, "pod_2": {}, "shared": {}})
-    monkeypatch.setattr("src.main.save_payload", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("src.main.MqttSender.publish", lambda *_args, **_kwargs: True)
+    repository = FakeRepository()
+    worker = FakeWorker(repository.events)
 
     run(
         settings,
         camera_capture=lambda *_args, **_kwargs: captures.append("capture"),
         sleep=lambda _seconds: None,
+        repository=repository,
+        delivery_worker=worker,
     )
 
     assert captures == []
+
+
+def test_run_suspends_sampling_and_camera_on_degraded_spool_disk(monkeypatch) -> None:
+    settings = _load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "MOCK_SENSORS": "true",
+            "CAMERA_ENABLED": "true",
+        }
+    )
+    repository = DegradedDiskRepository()
+    worker = FakeWorker(repository.events)
+    collected = []
+    captured = []
+
+    monkeypatch.setattr("src.main.collect_readings", lambda _settings: collected.append(True))
+
+    def stop_loop(_seconds):
+        raise StopLoop
+
+    with pytest.raises(StopLoop):
+        run(
+            settings,
+            camera_capture=lambda *_args, **_kwargs: captured.append(True),
+            sleep=stop_loop,
+            repository=repository,
+            delivery_worker=worker,
+        )
+
+    assert collected == []
+    assert captured == []
+    assert repository.payloads == []
 
 
 class FakePhotoSender:
@@ -258,35 +168,49 @@ class FakePhotoSender:
         return 0
 
 
-class FakeTelemetrySender:
-    def __init__(self, results: list[bool]) -> None:
-        self.results = iter(results)
+class FakeRepository:
+    def __init__(self) -> None:
         self.payloads = []
+        self.events = []
 
-    def publish(self, payload):
+    def import_legacy(self, _directory):
+        return 0, []
+
+    def health(self):
+        return {"status": "OK", "pending_count": 0, "in_flight_count": 0}
+
+    def enqueue(self, payload):
+        self.events.append("enqueue")
         self.payloads.append(payload)
-        return next(self.results)
 
-    def send(self, payload):
-        self.payloads.append(payload)
-        return next(self.results)
+    def cleanup_delivered(self, _days):
+        return 0
 
+    def relieve_disk_pressure(self, _days):
+        return 0
 
-class NullLogger:
-    def info(self, *_args, **_kwargs) -> None:
-        return None
-
-    def error(self, *_args, **_kwargs) -> None:
-        return None
+    def close(self):
+        self.events.append("close")
 
 
-def _write_queued_payload(tmp_path, name: str, timestamp: str):
-    payload = {
-        "schema_version": "senior-pomidor.edge.telemetry.v2",
-        "device_id": "balcony-edge-01",
-        "timestamp_utc": timestamp,
-        "pods": {},
-    }
-    path = tmp_path / name
-    path.write_text(json.dumps(payload), encoding="utf-8")
-    return path
+class FakeWorker:
+    def __init__(self, events) -> None:
+        self.events = events
+
+    def start(self):
+        self.events.append("start")
+
+    def notify(self):
+        self.events.append("notify")
+
+    def stop(self):
+        self.events.append("stop")
+
+
+class DegradedDiskRepository(FakeRepository):
+    def health(self):
+        return {"status": "DEGRADED", "disk_status": "DEGRADED", "pending_count": 2, "in_flight_count": 0}
+
+
+class StopLoop(Exception):
+    pass

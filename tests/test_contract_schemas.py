@@ -36,7 +36,14 @@ def test_public_examples_validate_against_schemas() -> None:
 
 
 def test_formatted_telemetry_validates_against_schema() -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "DEVICE_ID": "edge-01",
+        }
+    )
     payload = format_payload(
         settings,
         {
@@ -69,7 +76,14 @@ def test_formatted_telemetry_validates_against_schema() -> None:
 
 
 def test_lifecycle_event_validates_against_schema() -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "DEVICE_ID": "edge-01",
+        }
+    )
     event = format_lifecycle_event(
         settings,
         MAINTENANCE_STARTED,
@@ -85,6 +99,8 @@ def test_capture_photo_metadata_validates_against_schema(tmp_path) -> None:
     settings = load_config(
         {
             "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
             "DEVICE_ID": "edge-01",
             "MOCK_SENSORS": "true",
             "CAMERA_ENABLED": "true",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from typing import Any
 
 from src.config import ConfigError, Settings, load_config, public_settings
@@ -21,9 +22,10 @@ from src.sensors import (
     rpi_core,
     temp_ds18b20,
 )
+from src.telemetry_spool import DeliveryWorker, SpoolError, SpoolRepository
 from src.utils.camera import capture_photo
 from src.utils.formatter import format_payload
-from src.utils.local_storage import delete_payload_file, list_pending_payloads, load_payload_file, save_payload
+from src.utils.local_storage import delete_payload_file, list_pending_payloads, load_payload_file
 from src.utils.logger import configure_logger
 
 TELEMETRY_REPLAY_BATCH_SIZE = 10
@@ -115,13 +117,29 @@ def run(
     photo_sender: HttpPhotoSender | None = None,
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
+    repository: SpoolRepository | None = None,
+    delivery_worker: DeliveryWorker | None = None,
 ) -> None:
     logger = configure_logger()
     mqtt_sender = MqttSender(settings, logger=logger)
     http_sender = HttpSender(settings, logger=logger)
     photo_sender = photo_sender or HttpPhotoSender(settings, logger=logger)
+    repository = repository or _open_spool(settings, logger)
+    repository.import_legacy(settings.local_storage_dir)
+    repository.cleanup_delivered(settings.telemetry_spool_delivered_retention_days)
+    worker = delivery_worker or DeliveryWorker(
+        repository,
+        http_sender,
+        mqtt_sender,
+        batch_size=settings.telemetry_spool_batch_size,
+        rate_limit_per_second=settings.telemetry_spool_rate_limit_per_second,
+        checkpoint_interval_seconds=settings.telemetry_spool_checkpoint_interval_seconds,
+        logger=logger,
+    )
+    worker.start()
     next_camera_at = 0.0
     tick = 0
+    last_spool_status: str | None = None
 
     logger.info(
         "Starting Senior Pomidor edge node device_id=%s mock_sensors=%s",
@@ -129,34 +147,85 @@ def run(
         settings.mock_sensors,
     )
     logger.info("Effective configuration: %s", public_settings(settings))
-    while True:
-        tick += 1
-        _replay_pending_telemetry(settings, mqtt_sender, http_sender, logger=logger)
-        readings = collect_readings(settings)
-        payload = format_payload(settings, readings)
-        saved_path = save_payload(settings, payload, logger=logger)
-        delivered = _deliver_telemetry(settings, payload, mqtt_sender, http_sender)
-        if delivered and saved_path is not None:
-            delete_payload_file(saved_path, logger=logger)
+    pending_payload: dict[str, Any] | None = None
+    storage_exhausted = False
+    try:
+        while True:
+            repository.relieve_disk_pressure(settings.telemetry_spool_delivered_retention_days)
+            preflight_health = repository.health()
+            if str(preflight_health.get("disk_status", "OK")) in {"DEGRADED", "CRITICAL"}:
+                if not storage_exhausted:
+                    logger.critical(
+                        "Telemetry sampling suspended because spool disk state is %s",
+                        preflight_health["disk_status"],
+                    )
+                    storage_exhausted = True
+                sleep(min(5.0, settings.poll_interval_seconds))
+                continue
+            if pending_payload is None:
+                readings = collect_readings(settings)
+                spool_health = preflight_health
+                current_status = str(spool_health["status"])
+                if last_spool_status is not None and current_status != last_spool_status:
+                    logger.warning("Telemetry spool state changed: %s -> %s", last_spool_status, current_status)
+                last_spool_status = current_status
+                readings.setdefault("system_health", {})["spool"] = spool_health
+                pending_payload = format_payload(settings, readings)
+            try:
+                repository.enqueue(pending_payload)
+            except Exception as exc:  # noqa: BLE001 - persist-before-send safety boundary
+                if not storage_exhausted:
+                    logger.critical("SPOOL_STORAGE_EXHAUSTED: telemetry persist failed: %s", exc)
+                    storage_exhausted = True
+                with suppress(Exception):
+                    repository.increment_counter("write_failure_total")
+                sleep(min(5.0, settings.poll_interval_seconds))
+                continue
+            if storage_exhausted:
+                logger.info("Telemetry spool storage recovered")
+                storage_exhausted = False
+            pending_payload = None
+            tick += 1
+            worker.notify()
 
-        if settings.camera_enabled:
-            now = monotonic()
-            if now >= next_camera_at:
-                try:
-                    camera_capture(settings, logger=logger)
-                except Exception as exc:  # noqa: BLE001 - camera isolation boundary
-                    logger.error("Camera capture failed unexpectedly: %s", exc)
-                if settings.photo_upload_enabled:
+            if settings.camera_enabled and not storage_exhausted:
+                now = monotonic()
+                if now >= next_camera_at:
                     try:
-                        photo_sender.send_pending()
-                    except Exception as exc:  # noqa: BLE001 - transport isolation boundary
-                        logger.error("Photo upload failed unexpectedly: %s", exc)
-                next_camera_at = now + settings.camera_interval_seconds
+                        camera_capture(settings, logger=logger)
+                    except Exception as exc:  # noqa: BLE001 - camera isolation boundary
+                        logger.error("Camera capture failed unexpectedly: %s", exc)
+                    if settings.photo_upload_enabled:
+                        try:
+                            photo_sender.send_pending()
+                        except Exception as exc:  # noqa: BLE001 - transport isolation boundary
+                            logger.error("Photo upload failed unexpectedly: %s", exc)
+                    next_camera_at = now + settings.camera_interval_seconds
 
-        if settings.max_ticks is not None and tick >= settings.max_ticks:
-            logger.info("Stopping after MAX_TICKS=%s", settings.max_ticks)
-            return
-        sleep(settings.poll_interval_seconds)
+            if settings.max_ticks is not None and tick >= settings.max_ticks:
+                logger.info("Stopping after MAX_TICKS=%s", settings.max_ticks)
+                return
+            sleep(settings.poll_interval_seconds)
+    finally:
+        worker.stop()
+        repository.close()
+
+
+def _open_spool(settings: Settings, logger: Any) -> SpoolRepository:
+    return SpoolRepository(
+        settings.telemetry_spool_db_path,
+        busy_timeout_ms=settings.telemetry_spool_busy_timeout_ms,
+        capacity_mb=settings.telemetry_spool_capacity_mb,
+        retry_schedule=settings.telemetry_spool_retry_schedule_seconds,
+        retry_jitter=settings.telemetry_spool_retry_jitter,
+        max_attempts=settings.telemetry_spool_max_attempts,
+        disk_warning_percent=settings.telemetry_spool_disk_warning_percent,
+        disk_degraded_percent=settings.telemetry_spool_disk_degraded_percent,
+        disk_critical_percent=settings.telemetry_spool_disk_critical_percent,
+        max_payload_bytes=settings.telemetry_spool_max_payload_bytes,
+        poll_interval_seconds=settings.poll_interval_seconds,
+        logger=logger,
+    ).open()
 
 
 def _replay_pending_telemetry(
@@ -166,29 +235,20 @@ def _replay_pending_telemetry(
     *,
     logger: Any,
 ) -> int:
+    """Compatibility migration helper; the runtime imports legacy files into SQLite instead."""
     delivered_count = 0
     for path in list_pending_payloads(settings)[:TELEMETRY_REPLAY_BATCH_SIZE]:
         payload = load_payload_file(path, logger=logger)
         if payload is None:
             continue
-        if not _deliver_telemetry(settings, payload, mqtt_sender, http_sender):
-            logger.error("Queued telemetry delivery failed; replay will retry later: %s", path)
+        mqtt_sender.publish(payload)
+        result = http_sender.send(payload)
+        accepted = bool(result) if isinstance(result, bool) else result.status.value in {"accepted", "duplicate"}
+        if not accepted:
             break
         delete_payload_file(path, logger=logger)
         delivered_count += 1
     return delivered_count
-
-
-def _deliver_telemetry(
-    settings: Settings,
-    payload: dict[str, Any],
-    mqtt_sender: MqttSender,
-    http_sender: HttpSender,
-) -> bool:
-    delivered = mqtt_sender.publish(payload)
-    if not delivered and settings.http_enabled:
-        delivered = http_sender.send(payload)
-    return delivered
 
 
 def main() -> int:
@@ -196,8 +256,8 @@ def main() -> int:
     try:
         run(load_config())
         return 0
-    except ConfigError as exc:
-        logger.error("Configuration error: %s", exc)
+    except (ConfigError, SpoolError) as exc:
+        logger.error("Startup error: %s", exc)
         return 2
 
 

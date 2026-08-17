@@ -6,7 +6,14 @@ from src.utils.event_storage import delete_event_file, list_pending_events, load
 
 
 def test_save_event_writes_json_file(tmp_path) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "LOCAL_EVENT_DIR": str(tmp_path)})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "LOCAL_EVENT_DIR": str(tmp_path),
+        }
+    )
     event = _event("event-1")
 
     saved_path = save_event(settings, event)
@@ -17,7 +24,14 @@ def test_save_event_writes_json_file(tmp_path) -> None:
 
 
 def test_list_pending_events_returns_oldest_first(tmp_path) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "LOCAL_EVENT_DIR": str(tmp_path)})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "LOCAL_EVENT_DIR": str(tmp_path),
+        }
+    )
     old_file = tmp_path / "old.json"
     new_file = tmp_path / "new.json"
     old_file.write_text("{}", encoding="utf-8")

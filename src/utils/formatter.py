@@ -73,6 +73,7 @@ def _format_system_health(readings: Any) -> dict[str, Any]:
         "rpi_core": {},
         "network": {},
         "application": {},
+        "spool": {},
         "pod_1_hardware": {},
         "errors": errors,
     }
@@ -82,6 +83,7 @@ def _format_system_health(readings: Any) -> dict[str, Any]:
     _merge_health_metrics(readings.get("rpi_core"), result["rpi_core"], errors)
     _merge_health_metrics(readings.get("network"), result["network"], errors)
     _merge_health_metrics(readings.get("application"), result["application"], errors)
+    _merge_health_metrics(readings.get("spool"), result["spool"], errors)
 
     pod_1_hardware = readings.get("pod_1_hardware", {})
     if isinstance(pod_1_hardware, dict):
@@ -118,7 +120,7 @@ def _merge_health_metrics(reading: Any, metrics: dict[str, Any], errors: list[di
         if key == "errors":
             continue
         if isinstance(value, bool | str) or (
-            isinstance(value, int) and key.endswith(("_bytes", "_count", "_code", "_seconds"))
+            isinstance(value, int) and key.endswith(("_bytes", "_count", "_code", "_seconds", "_total"))
         ):
             metrics[key] = value
         elif isinstance(value, (int, float)):

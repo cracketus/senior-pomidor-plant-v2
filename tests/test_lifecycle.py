@@ -7,7 +7,14 @@ from src.utils.events import MAINTENANCE_COMPLETED, MAINTENANCE_STARTED
 
 
 def test_emit_lifecycle_event_deletes_current_event_after_success(tmp_path) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "LOCAL_EVENT_DIR": str(tmp_path)})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "LOCAL_EVENT_DIR": str(tmp_path),
+        }
+    )
     sender = FakeEventSender(results=[True])
 
     delivered = emit_lifecycle_event(settings, MAINTENANCE_STARTED, reason="sensor service", sender=sender)
@@ -19,7 +26,14 @@ def test_emit_lifecycle_event_deletes_current_event_after_success(tmp_path) -> N
 
 
 def test_emit_lifecycle_event_keeps_current_event_after_failure(tmp_path) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "LOCAL_EVENT_DIR": str(tmp_path)})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "LOCAL_EVENT_DIR": str(tmp_path),
+        }
+    )
     sender = FakeEventSender(results=[False])
 
     delivered = emit_lifecycle_event(settings, MAINTENANCE_COMPLETED, sender=sender)
@@ -31,7 +45,14 @@ def test_emit_lifecycle_event_keeps_current_event_after_failure(tmp_path) -> Non
 
 
 def test_emit_lifecycle_event_replays_queued_events_before_new_event(tmp_path) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "LOCAL_EVENT_DIR": str(tmp_path)})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "LOCAL_EVENT_DIR": str(tmp_path),
+        }
+    )
     queued_file = _write_queued_event(tmp_path, "queued.json", "queued", "maintenance_started")
     sender = FakeEventSender(results=[True, True])
 
@@ -44,7 +65,14 @@ def test_emit_lifecycle_event_replays_queued_events_before_new_event(tmp_path) -
 
 
 def test_replay_pending_events_stops_after_first_failure(tmp_path) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "LOCAL_EVENT_DIR": str(tmp_path)})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "LOCAL_EVENT_DIR": str(tmp_path),
+        }
+    )
     failed_file = _write_queued_event(tmp_path, "failed.json", "failed", "maintenance_started")
     later_file = _write_queued_event(tmp_path, "later.json", "later", "maintenance_completed")
     os.utime(failed_file, (1, 1))
@@ -60,7 +88,14 @@ def test_replay_pending_events_stops_after_first_failure(tmp_path) -> None:
 
 
 def test_replay_pending_events_skips_corrupt_file_and_continues(tmp_path) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "LOCAL_EVENT_DIR": str(tmp_path)})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "LOCAL_EVENT_DIR": str(tmp_path),
+        }
+    )
     corrupt_file = tmp_path / "corrupt.json"
     corrupt_file.write_text("{invalid", encoding="utf-8")
     valid_file = _write_queued_event(tmp_path, "valid.json", "valid", "maintenance_completed")
@@ -76,7 +111,14 @@ def test_replay_pending_events_skips_corrupt_file_and_continues(tmp_path) -> Non
 
 
 def test_replay_pending_events_processes_at_most_batch_size(tmp_path) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "LOCAL_EVENT_DIR": str(tmp_path)})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "LOCAL_EVENT_DIR": str(tmp_path),
+        }
+    )
     for index in range(EVENT_REPLAY_BATCH_SIZE + 1):
         event_file = _write_queued_event(tmp_path, f"{index:02d}.json", f"event-{index}", "maintenance_started")
         os.utime(event_file, (index, index))

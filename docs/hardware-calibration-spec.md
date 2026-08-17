@@ -98,4 +98,4 @@ Before `MOCK_SENSORS=false`:
 - `scripts/test_sensors.py all` passes or reports only understood, intentionally disabled hardware.
 - One saved telemetry payload has plausible units and no unexpected sensor errors.
 - Camera capture works if `CAMERA_ENABLED=true`.
-- MQTT delivery reaches Core, or HTTP fallback is intentionally enabled and tested.
+- HTTP application-acknowledged telemetry delivery reaches Core; the MQTT mirror is also tested when configured.

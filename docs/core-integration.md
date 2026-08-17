@@ -2,9 +2,9 @@
 
 This document describes how the edge node sends its active contracts to Core. It does not define Core storage, AI, dashboards, or actuation behavior.
 
-## MQTT Telemetry
+## MQTT Telemetry Mirror
 
-Telemetry is the primary transport.
+MQTT is an optional best-effort mirror. A QoS 1 PUBACK never marks a spool record delivered.
 
 Topic:
 
@@ -20,7 +20,7 @@ MQTT behavior:
 - Retain is `false`.
 - Username/password are used when `MQTT_USERNAME` is set.
 - TLS is enabled when `MQTT_TLS=true` and uses certificate-required validation from the local TLS stack.
-- A publish is considered successful when the client call completes without raising.
+- A completed publish is diagnostic only; HTTP application acknowledgement remains authoritative.
 
 Core should validate `schema_version`, accept duplicate payloads safely, and ignore unknown fields.
 
@@ -36,18 +36,19 @@ Payload: JSON object with `schema_version=senior-pomidor.edge.event.v1`.
 
 The MQTT auth, TLS, QoS, and retain behavior matches telemetry. Core should treat `event_id` as the idempotency key.
 
-## HTTP Telemetry Fallback
+## HTTP Telemetry Delivery
 
-When MQTT telemetry delivery fails and `HTTP_ENABLED=true`, the edge node posts the same telemetry JSON to `CORE_HTTP_URL`.
+`HTTP_ENABLED=true` and `CORE_HTTP_URL` are mandatory. The delivery worker posts every spooled record even when its MQTT mirror succeeded.
 
 Request behavior:
 
 - Method: `POST`
 - Body: JSON telemetry payload
 - Timeout: `HTTP_TIMEOUT_SECONDS`
-- Success: any response accepted by `requests.raise_for_status()`
+- Optional header: `Authorization: Bearer <TELEMETRY_UPLOAD_TOKEN>`
+- Acknowledgement: JSON containing the same `record_id` and one of `accepted`, `duplicate`, `retry`, or `rejected`
 
-HTTP fallback is not attempted when MQTT succeeds. Failed fallback leaves the local telemetry file queued for later replay.
+Only `accepted` and `duplicate` mark delivery complete. `rejected` creates a dead letter. Missing, malformed, or mismatched acknowledgements and network, timeout, authentication, 429, or 5xx failures remain retryable.
 
 ## Photo Upload
 
@@ -68,15 +69,15 @@ Core should treat `photo_id` as the idempotency key and return any 2xx status af
 
 ## Local Buffering And Replay
 
-Telemetry is saved locally before network delivery. On successful delivery, the queued file is deleted. On failure, it remains under `LOCAL_STORAGE_DIR`.
+Telemetry is committed to `TELEMETRY_SPOOL_DB_PATH` before either transport runs. A separate worker selects one newest eligible record plus the oldest backlog records in a bounded batch, preserving live priority while draining an outage. Retry state and the complete attempt history survive restarts.
 
-At the start of each telemetry loop, the edge replays up to 10 pending telemetry files oldest-first. Replay stops at the first failed delivery so ordering is preserved for the remaining queue.
+Legacy JSON under `LOCAL_STORAGE_DIR` is imported oldest-first once SQLite commits it. Invalid files remain for inspection.
 
 Lifecycle events are saved before publish. The maintenance command replays up to 10 pending events oldest-first before sending the current event. Corrupt queued files are skipped and left in place for operator inspection.
 
 Photo JPEGs and metadata sidecars are saved locally before upload. Pending photos are uploaded oldest-first during camera upload cycles.
 
-Telemetry and photo storage cleanup use `LOCAL_STORAGE_MAX_AGE_DAYS` and `LOCAL_STORAGE_MAX_SIZE_MB`.
+Telemetry cleanup deletes only delivered records older than the configured retention. Pending and dead-letter data is never automatically deleted. Photo storage keeps its existing file cleanup behavior.
 
 ## Consumer Expectations
 
@@ -86,8 +87,8 @@ Core consumers should:
 - Accept UTC timestamps with trailing `Z`.
 - Ignore unknown fields.
 - Preserve raw payloads or enough metadata for diagnostics.
-- Treat `event_id` and `photo_id` as idempotency keys.
-- Return 2xx only after durable acceptance of HTTP telemetry or photo uploads.
+- Treat `record_id`, `event_id`, and `photo_id` as idempotency keys.
+- Return the acknowledgement only after durable telemetry acceptance.
 
 Core consumers should not assume the edge node performs state estimation beyond VPD metrics, weather enrichment, actuation decisions, anomaly classification, dashboard storage, or AI/VLM analysis.
 

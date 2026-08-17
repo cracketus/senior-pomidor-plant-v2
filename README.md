@@ -21,7 +21,7 @@ This `v0.1.0` release is an edge-node foundation, not the full Senior Pomidor pl
 
 ## Overview
 
-The Edge Node reads soil, air, light, leaf-temperature, and hardware health sensors, formats the readings into a Senior Pomidor telemetry payload, stores a local copy on the edge node, and publishes the payload to the Core server over MQTT. HTTP is included as an optional fallback transport. The node can also capture local USB camera photos on an independent interval and upload them to the Core server over HTTP multipart.
+The Edge Node reads soil, air, light, leaf-temperature, and hardware health sensors, commits each telemetry payload to a durable SQLite spool, mirrors it over MQTT, and completes delivery only after an HTTP application acknowledgement. The node can also capture local USB camera photos on an independent interval and upload them to the Core server over HTTP multipart.
 
 The application is designed around three constraints:
 
@@ -85,12 +85,13 @@ Important variables:
 - `POLL_INTERVAL_SECONDS`: delay between telemetry ticks.
 - `MOCK_SENSORS`: `true` for mock mode, `false` for Raspberry Pi hardware mode.
 - `POD1_ENABLED`, `POD2_ENABLED`: set a pod to `false` when it is not physically connected.
-- `MQTT_HOST`, `MQTT_PORT`, `MQTT_TOPIC_PREFIX`: primary delivery settings.
-- `HTTP_ENABLED`, `CORE_HTTP_URL`: optional fallback sender settings.
-- `LOCAL_STORAGE_DIR`: directory where local telemetry JSON files are stored.
+- `MQTT_HOST`, `MQTT_PORT`, `MQTT_TOPIC_PREFIX`: best-effort telemetry mirror settings.
+- `HTTP_ENABLED`, `CORE_HTTP_URL`: required authoritative telemetry delivery settings.
+- `TELEMETRY_UPLOAD_TOKEN`: optional bearer token, never included in effective-configuration logs.
+- `TELEMETRY_SPOOL_*`: SQLite path, retention, capacity, batching, retry, checkpoint, and disk-pressure settings.
+- `LOCAL_STORAGE_DIR`: legacy telemetry JSON directory imported into SQLite at startup.
 - `LOCAL_EVENT_DIR`: directory where queued lifecycle event JSON files are stored.
-- `LOCAL_STORAGE_MAX_AGE_DAYS`: maximum age of local telemetry files before cleanup.
-- `LOCAL_STORAGE_MAX_SIZE_MB`: maximum disk space used by local telemetry files.
+- `LOCAL_STORAGE_MAX_AGE_DAYS`, `LOCAL_STORAGE_MAX_SIZE_MB`: retained for legacy file-tool compatibility; SQLite uses `TELEMETRY_SPOOL_*` limits.
 - `CAMERA_ENABLED`: set to `true` on Raspberry Pi when the camera should capture photos.
 - `CAMERA_INTERVAL_SECONDS`: delay between camera capture attempts, independent from telemetry polling.
 - `CAMERA_STORAGE_DIR`: directory where accepted JPEG photos and metadata sidecars are stored.
@@ -210,24 +211,26 @@ The Raspberry Pi setup script can set this for you:
 ./scripts/setup_raspberry_pi.sh --hardware --mqtt-host 192.0.2.10 --pod2-disabled
 ```
 
-## Local Storage
+## Durable telemetry spool
 
-Every telemetry payload is saved locally before network delivery. By default, Docker stores files on the Raspberry Pi host at:
+Every telemetry payload is committed to SQLite before network delivery. By default, Docker persists the database on the Raspberry Pi host at:
 
 ```text
-./data/telemetry
+./data/telemetry-spool.sqlite3
 ```
 
-Retention is controlled by:
+Core controls are:
 
 ```env
-LOCAL_STORAGE_DIR=data/telemetry
-LOCAL_EVENT_DIR=data/events
-LOCAL_STORAGE_MAX_AGE_DAYS=30
-LOCAL_STORAGE_MAX_SIZE_MB=256
+TELEMETRY_SPOOL_DB_PATH=data/telemetry-spool.sqlite3
+TELEMETRY_SPOOL_PENDING_RETENTION_DAYS=30
+TELEMETRY_SPOOL_DELIVERED_RETENTION_DAYS=7
+TELEMETRY_SPOOL_MAX_PAYLOAD_BYTES=16384
+TELEMETRY_SPOOL_CAPACITY_MB=1536
+TELEMETRY_SPOOL_RETRY_SCHEDULE_SECONDS=5,15,30,60,300
 ```
 
-Cleanup runs after each saved payload. Files older than the configured age are removed first; if the directory still exceeds the configured size, the oldest remaining files are removed until the directory is below the limit.
+Startup validates capacity against polling frequency, pending and delivered retention, maximum payload size, and a service reserve. Cleanup removes only delivered rows past retention. Pending and dead-letter telemetry is preserved. See [the operator runbook](docs/telemetry-spool-runbook.md) for sizing, inspection, online backup/export, retry, migration, corruption, and disk recovery.
 
 ## Planned Maintenance Events
 
@@ -609,9 +612,11 @@ System health errors appear under `system_health.errors`:
 }
 ```
 
-When an error appears, fix the named sensor first, then run one telemetry tick again and inspect the newest JSON file.
+When an error appears, fix the named sensor first, then run one telemetry tick and inspect `python scripts/telemetry_spool.py status`.
 
 ## Docker
+
+Telemetry uses the durable `data/telemetry-spool.sqlite3` database under the existing persistent `./data` mount. `HTTP_ENABLED=true` and `CORE_HTTP_URL` are mandatory; `TELEMETRY_UPLOAD_TOKEN` optionally adds a bearer token and is omitted from effective-configuration logs. MQTT remains a best-effort mirror. For inspection, backup, dead-letter retry, corruption, and disk-exhaustion procedures, see [the telemetry spool runbook](docs/telemetry-spool-runbook.md).
 
 Cross-platform mock container:
 

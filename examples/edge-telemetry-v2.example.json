@@ -1,7 +1,11 @@
 {
   "schema_version": "senior-pomidor.edge.telemetry.v2",
   "device_id": "balcony-edge-01",
+  "record_id": "ac1ea799-40b2-4edc-ad02-e4b5cb95a391",
+  "boot_id": "6d2aabfe-f77b-4f4e-a362-883b9509d67e",
+  "sequence": 1842,
   "timestamp_utc": "2026-06-06T10:00:00Z",
+  "stored_at_utc": "2026-06-06T10:00:01Z",
   "pods": {
     "pod_1": {
       "enabled": true,
