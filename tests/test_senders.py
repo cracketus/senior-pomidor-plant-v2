@@ -1,22 +1,34 @@
 import json
 
-from src.config import load_config
+import pytest
+
+from src.config import ConfigError, load_config
 from src.network.event_sender import MqttEventSender
 from src.network.http_sender import HttpSender
 from src.network.mqtt_sender import MqttSender
 from src.network.photo_sender import HttpPhotoSender
+from src.telemetry_spool import DeliveryStatus
 from src.utils.camera import PhotoRecord
 
 
+def _load_config(env):
+    values = {
+        "HTTP_ENABLED": "true",
+        "CORE_HTTP_URL": "https://core.example/telemetry",
+    }
+    values.update(env)
+    return load_config(values)
+
+
 def test_mqtt_sender_returns_false_on_client_failure() -> None:
-    settings = load_config({"MQTT_HOST": "core.local"})
+    settings = _load_config({"MQTT_HOST": "core.local"})
     sender = MqttSender(settings, client_factory=lambda: FailingMqttClient())
 
     assert sender.publish({"hello": "world"}) is False
 
 
 def test_mqtt_event_sender_publishes_to_events_topic() -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01", "MQTT_TOPIC_PREFIX": "plants"})
+    settings = _load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01", "MQTT_TOPIC_PREFIX": "plants"})
     client = CapturingMqttClient()
     sender = MqttEventSender(settings, client_factory=lambda: client)
 
@@ -28,20 +40,19 @@ def test_mqtt_event_sender_publishes_to_events_topic() -> None:
 
 
 def test_mqtt_event_sender_returns_false_on_client_failure() -> None:
-    settings = load_config({"MQTT_HOST": "core.local"})
+    settings = _load_config({"MQTT_HOST": "core.local"})
     sender = MqttEventSender(settings, client_factory=lambda: FailingMqttClient())
 
     assert sender.publish({"event_type": "maintenance_started"}) is False
 
 
-def test_http_sender_disabled_returns_false() -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "HTTP_ENABLED": "false"})
-
-    assert HttpSender(settings).send({"hello": "world"}) is False
+def test_http_sender_cannot_be_disabled() -> None:
+    with pytest.raises(ConfigError, match="HTTP_ENABLED=true"):
+        _load_config({"MQTT_HOST": "core.local", "HTTP_ENABLED": "false"})
 
 
 def test_http_sender_accepts_202_and_posts_payload() -> None:
-    settings = load_config(
+    settings = _load_config(
         {
             "MQTT_HOST": "core.local",
             "HTTP_ENABLED": "true",
@@ -55,11 +66,11 @@ def test_http_sender_accepts_202_and_posts_payload() -> None:
         captured["url"] = url
         captured["json"] = json
         captured["timeout"] = timeout
-        return Response(202)
+        return Response(202, {"record_id": "record-1", "status": "accepted"})
 
-    payload = {"schema_version": "senior-pomidor.edge.telemetry.v2"}
+    payload = {"schema_version": "senior-pomidor.edge.telemetry.v2", "record_id": "record-1"}
 
-    assert HttpSender(settings, post_func=post_func).send(payload) is True
+    assert HttpSender(settings, post_func=post_func).send(payload).status is DeliveryStatus.ACCEPTED
     assert captured == {
         "url": "https://core.example/api/v1/edge/telemetry",
         "json": payload,
@@ -67,8 +78,8 @@ def test_http_sender_accepts_202_and_posts_payload() -> None:
     }
 
 
-def test_http_sender_rejects_non_202_status() -> None:
-    settings = load_config(
+def test_http_sender_retries_invalid_ack() -> None:
+    settings = _load_config(
         {
             "MQTT_HOST": "core.local",
             "HTTP_ENABLED": "true",
@@ -76,11 +87,13 @@ def test_http_sender_rejects_non_202_status() -> None:
         }
     )
 
-    assert HttpSender(settings, post_func=lambda *_args, **_kwargs: Response(200)).send({"hello": "world"}) is False
+    result = HttpSender(settings, post_func=lambda *_args, **_kwargs: Response(200)).send({"record_id": "record-1"})
+
+    assert result.status is DeliveryStatus.RETRY
 
 
 def test_http_photo_sender_uploads_multipart_and_marks_uploaded(tmp_path) -> None:
-    settings = load_config(
+    settings = _load_config(
         {
             "MQTT_HOST": "core.local",
             "DEVICE_ID": "edge-01",
@@ -127,7 +140,7 @@ def test_http_photo_sender_uploads_multipart_and_marks_uploaded(tmp_path) -> Non
 
 
 def test_http_photo_sender_preserves_pending_on_failure(tmp_path) -> None:
-    settings = load_config(
+    settings = _load_config(
         {
             "MQTT_HOST": "core.local",
             "PHOTO_UPLOAD_ENABLED": "true",
@@ -145,7 +158,7 @@ def test_http_photo_sender_preserves_pending_on_failure(tmp_path) -> None:
 
 
 def test_http_photo_sender_treats_duplicate_200_as_success(tmp_path) -> None:
-    settings = load_config(
+    settings = _load_config(
         {
             "MQTT_HOST": "core.local",
             "PHOTO_UPLOAD_ENABLED": "true",
@@ -159,7 +172,7 @@ def test_http_photo_sender_treats_duplicate_200_as_success(tmp_path) -> None:
 
 
 def test_http_photo_sender_disabled_returns_zero(tmp_path) -> None:
-    settings = load_config(
+    settings = _load_config(
         {
             "MQTT_HOST": "core.local",
             "PHOTO_UPLOAD_ENABLED": "false",
@@ -196,8 +209,14 @@ class PublishInfo:
 
 
 class Response:
-    def __init__(self, status_code: int) -> None:
+    def __init__(self, status_code: int, body=None) -> None:
         self.status_code = status_code
+        self.body = body
+
+    def json(self):
+        if self.body is None:
+            raise ValueError("no JSON body")
+        return self.body
 
 
 def _photo_record(tmp_path) -> PhotoRecord:

@@ -16,6 +16,8 @@ def test_save_payload_writes_json_file(tmp_path) -> None:
     settings = load_config(
         {
             "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
             "DEVICE_ID": "edge-01",
             "LOCAL_STORAGE_DIR": str(tmp_path),
         }
@@ -63,7 +65,14 @@ def test_cleanup_storage_limits_total_size(tmp_path) -> None:
 
 
 def test_list_pending_payloads_returns_oldest_first(tmp_path) -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "LOCAL_STORAGE_DIR": str(tmp_path)})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "LOCAL_STORAGE_DIR": str(tmp_path),
+        }
+    )
     old_file = tmp_path / "old.json"
     new_file = tmp_path / "new.json"
     old_file.write_text("{}", encoding="utf-8")

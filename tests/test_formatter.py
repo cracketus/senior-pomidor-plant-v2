@@ -5,7 +5,14 @@ from src.utils.formatter import SCHEMA_VERSION, format_payload
 
 
 def test_formatter_preserves_partial_readings_and_errors() -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "DEVICE_ID": "edge-01",
+        }
+    )
     payload = format_payload(
         settings,
         {
@@ -48,6 +55,7 @@ def test_formatter_preserves_partial_readings_and_errors() -> None:
         },
         "network": {},
         "application": {},
+        "spool": {},
         "pod_1_hardware": {
             "bus_voltage_v": 3.25,
             "bus_current_ma": 12.4,
@@ -57,7 +65,14 @@ def test_formatter_preserves_partial_readings_and_errors() -> None:
 
 
 def test_formatter_marks_disabled_pod() -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "DEVICE_ID": "edge-01",
+        }
+    )
     payload = format_payload(
         settings,
         {"pod_1": {}, "pod_2": None, "shared": {"light": {"light_lux": 12000.0}}},
@@ -68,7 +83,14 @@ def test_formatter_marks_disabled_pod() -> None:
 
 
 def test_formatter_adds_vpd_metrics_to_each_enabled_pod() -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "DEVICE_ID": "edge-01",
+        }
+    )
     payload = format_payload(
         settings,
         {
@@ -96,7 +118,14 @@ def test_formatter_adds_vpd_metrics_to_each_enabled_pod() -> None:
 
 
 def test_formatter_adds_only_air_vpd_when_leaf_temperature_is_missing() -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "DEVICE_ID": "edge-01",
+        }
+    )
     payload = format_payload(
         settings,
         {
@@ -121,7 +150,14 @@ def test_formatter_adds_only_air_vpd_when_leaf_temperature_is_missing() -> None:
 
 
 def test_formatter_skips_vpd_when_air_reading_errors() -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "DEVICE_ID": "edge-01",
+        }
+    )
     payload = format_payload(
         settings,
         {
@@ -141,7 +177,14 @@ def test_formatter_skips_vpd_when_air_reading_errors() -> None:
 
 
 def test_formatter_isolates_health_errors() -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "DEVICE_ID": "edge-01",
+        }
+    )
     payload = format_payload(
         settings,
         {
@@ -165,6 +208,7 @@ def test_formatter_isolates_health_errors() -> None:
         "rpi_core": {"cpu_temp_c": 56.4},
         "network": {},
         "application": {},
+        "spool": {},
         "pod_1_hardware": {},
         "errors": [
             {"sensor": "rpi_wifi_rssi", "message": "RSSI unavailable"},
@@ -174,7 +218,13 @@ def test_formatter_isolates_health_errors() -> None:
 
 
 def test_formatter_preserves_storage_counts_bytes_and_status_types() -> None:
-    settings = load_config({"MQTT_HOST": "core.local"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+        }
+    )
     payload = format_payload(
         settings,
         {
@@ -198,7 +248,13 @@ def test_formatter_preserves_storage_counts_bytes_and_status_types() -> None:
 
 
 def test_formatter_preserves_network_health_strings_and_status_code() -> None:
-    settings = load_config({"MQTT_HOST": "core.local"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+        }
+    )
     payload = format_payload(
         settings,
         {

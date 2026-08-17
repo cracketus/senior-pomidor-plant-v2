@@ -12,14 +12,16 @@ def test_config_parses_types_and_topic() -> None:
     settings = load_config(
         {
             "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
             "DEVICE_ID": "edge-01",
             "POLL_INTERVAL_SECONDS": "30",
+            "TELEMETRY_SPOOL_CAPACITY_MB": "3072",
             "MOCK_SENSORS": "true",
             "MQTT_PORT": "1884",
             "MQTT_TOPIC_PREFIX": "plants",
             "ADS1115_ADDRESS": "0x48",
             "BME280_ADDRESS": "0x75",
-            "HTTP_ENABLED": "false",
         }
     )
 
@@ -35,6 +37,8 @@ def test_config_parses_local_storage_settings() -> None:
     settings = load_config(
         {
             "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
             "LOCAL_STORAGE_DIR": "/var/lib/senior-pomidor/telemetry",
             "LOCAL_EVENT_DIR": "/var/lib/senior-pomidor/events",
             "LOCAL_STORAGE_MAX_AGE_DAYS": "14",
@@ -50,7 +54,13 @@ def test_config_parses_local_storage_settings() -> None:
 
 
 def test_config_parses_camera_defaults() -> None:
-    settings = load_config({"MQTT_HOST": "core.local"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+        }
+    )
 
     assert settings.camera_enabled is False
     assert settings.camera_interval_seconds == 3600
@@ -68,7 +78,13 @@ def test_config_parses_camera_defaults() -> None:
 
 
 def test_config_parses_health_defaults() -> None:
-    settings = load_config({"MQTT_HOST": "core.local"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+        }
+    )
 
     assert settings.ina219_address == 0x40
     assert settings.wifi_interface == "wlan0"
@@ -85,6 +101,8 @@ def test_config_parses_health_settings() -> None:
     settings = load_config(
         {
             "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
             "INA219_ADDRESS": "0x41",
             "WIFI_INTERFACE": "wlan1",
             "WIFI_PROFILE_DIR": "/nm/profiles",
@@ -112,6 +130,8 @@ def test_config_parses_camera_settings() -> None:
     settings = load_config(
         {
             "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
             "CAMERA_ENABLED": "true",
             "CAMERA_INTERVAL_SECONDS": "120",
             "CAMERA_STORAGE_DIR": "/var/lib/senior-pomidor/photos",
@@ -145,28 +165,58 @@ def test_config_parses_camera_settings() -> None:
 
 def test_photo_upload_url_required_when_upload_enabled() -> None:
     with pytest.raises(ConfigError, match="PHOTO_UPLOAD_URL"):
-        load_config({"MQTT_HOST": "core.local", "PHOTO_UPLOAD_ENABLED": "true"})
+        load_config(
+            {
+                "MQTT_HOST": "core.local",
+                "HTTP_ENABLED": "true",
+                "CORE_HTTP_URL": "https://core.example/telemetry",
+                "PHOTO_UPLOAD_ENABLED": "true",
+            }
+        )
 
 
 def test_config_rejects_invalid_camera_quality() -> None:
     with pytest.raises(ConfigError, match="CAMERA_JPEG_QUALITY"):
-        load_config({"MQTT_HOST": "core.local", "CAMERA_JPEG_QUALITY": "101"})
+        load_config(
+            {
+                "MQTT_HOST": "core.local",
+                "HTTP_ENABLED": "true",
+                "CORE_HTTP_URL": "https://core.example/telemetry",
+                "CAMERA_JPEG_QUALITY": "101",
+            }
+        )
 
 
 def test_config_rejects_invalid_camera_resolution() -> None:
     with pytest.raises(ConfigError, match="CAMERA_RESOLUTION"):
-        load_config({"MQTT_HOST": "core.local", "CAMERA_RESOLUTION": "1920-1080"})
+        load_config(
+            {
+                "MQTT_HOST": "core.local",
+                "HTTP_ENABLED": "true",
+                "CORE_HTTP_URL": "https://core.example/telemetry",
+                "CAMERA_RESOLUTION": "1920-1080",
+            }
+        )
 
 
 def test_config_rejects_invalid_camera_skip_frames() -> None:
     with pytest.raises(ConfigError, match="CAMERA_SKIP_FRAMES"):
-        load_config({"MQTT_HOST": "core.local", "CAMERA_SKIP_FRAMES": "-1"})
+        load_config(
+            {
+                "MQTT_HOST": "core.local",
+                "HTTP_ENABLED": "true",
+                "CORE_HTTP_URL": "https://core.example/telemetry",
+                "CAMERA_SKIP_FRAMES": "-1",
+            }
+        )
 
 
 def test_config_parses_raw_ads1115_readings_and_pod_flags() -> None:
     settings = load_config(
         {
             "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
             "POD2_ENABLED": "false",
             "ADS1115_POD1_DRY_READING": "17736",
             "ADS1115_POD1_WET_READING": "7220",
@@ -186,6 +236,8 @@ def test_config_keeps_legacy_ads1115_voltage_env_names_as_aliases() -> None:
     settings = load_config(
         {
             "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
             "ADS1115_POD1_DRY_VOLTAGE": "17736",
             "ADS1115_POD1_WET_VOLTAGE": "7220",
         }
@@ -196,29 +248,66 @@ def test_config_keeps_legacy_ads1115_voltage_env_names_as_aliases() -> None:
 
 
 def test_config_keeps_legacy_bme280_pod1_address_as_alias() -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "BME280_POD1_ADDRESS": "0x75"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "BME280_POD1_ADDRESS": "0x75",
+        }
+    )
 
     assert settings.bme280_address == 0x75
 
 
 def test_config_rejects_all_pods_disabled() -> None:
     with pytest.raises(ConfigError, match="At least one pod"):
-        load_config({"MQTT_HOST": "core.local", "POD1_ENABLED": "false", "POD2_ENABLED": "false"})
+        load_config(
+            {
+                "MQTT_HOST": "core.local",
+                "HTTP_ENABLED": "true",
+                "CORE_HTTP_URL": "https://core.example/telemetry",
+                "POD1_ENABLED": "false",
+                "POD2_ENABLED": "false",
+            }
+        )
 
 
 def test_mock_sensors_default_to_true_on_windows() -> None:
-    settings = load_config({"MQTT_HOST": "core.local"}, platform_name="Windows")
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+        },
+        platform_name="Windows",
+    )
 
     assert settings.mock_sensors is True
 
 
 def test_real_sensor_mode_is_rejected_on_windows() -> None:
     with pytest.raises(ConfigError, match="Real sensor mode"):
-        load_config({"MQTT_HOST": "core.local", "MOCK_SENSORS": "false"}, platform_name="Windows")
+        load_config(
+            {
+                "MQTT_HOST": "core.local",
+                "HTTP_ENABLED": "true",
+                "CORE_HTTP_URL": "https://core.example/telemetry",
+                "MOCK_SENSORS": "false",
+            },
+            platform_name="Windows",
+        )
 
 
 def test_mock_sensors_default_to_false_on_linux() -> None:
-    settings = load_config({"MQTT_HOST": "core.local"}, platform_name="Linux")
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+        },
+        platform_name="Linux",
+    )
 
     assert settings.mock_sensors is False
 

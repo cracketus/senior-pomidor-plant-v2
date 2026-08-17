@@ -11,6 +11,7 @@ def test_readiness_checks_pass_for_configured_hardware(tmp_path) -> None:
     settings = load_config(
         {
             "MQTT_HOST": "mqtt.local",
+            "HTTP_ENABLED": "true",
             "CORE_HTTP_URL": "http://core.local:8000/api/v1/edge/telemetry",
             "CAMERA_ENABLED": "true",
             "CAMERA_DEVICE": "/dev/video0",
@@ -50,6 +51,7 @@ def test_readiness_reports_actionable_hardware_failures(tmp_path) -> None:
     settings = load_config(
         {
             "MQTT_HOST": "mqtt.local",
+            "HTTP_ENABLED": "true",
             "CORE_HTTP_URL": "http://core.local:8000/api/v1/edge/telemetry",
             "CAMERA_ENABLED": "true",
             "CAMERA_DEVICE": "/dev/video0",
@@ -87,6 +89,7 @@ def test_readiness_skips_hardware_checks_in_mock_mode(tmp_path) -> None:
     settings = load_config(
         {
             "MQTT_HOST": "mqtt.local",
+            "HTTP_ENABLED": "true",
             "CORE_HTTP_URL": "http://core.local:8000/api/v1/edge/telemetry",
             "MOCK_SENSORS": "true",
             "CAMERA_ENABLED": "false",

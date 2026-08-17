@@ -177,6 +177,8 @@ def test_cleanup_photo_storage_limits_total_size(tmp_path) -> None:
 def _settings(tmp_path, **overrides):
     env = {
         "MQTT_HOST": "core.local",
+        "HTTP_ENABLED": "true",
+        "CORE_HTTP_URL": "https://core.example/telemetry",
         "DEVICE_ID": "edge-01",
         "MOCK_SENSORS": "true",
         "CAMERA_ENABLED": "true",

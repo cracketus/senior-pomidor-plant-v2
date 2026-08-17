@@ -7,7 +7,14 @@ from src.utils.events import EVENT_SCHEMA_VERSION, MAINTENANCE_STARTED, format_l
 
 
 def test_format_lifecycle_event_includes_required_fields() -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "DEVICE_ID": "edge-01",
+        }
+    )
 
     event = format_lifecycle_event(
         settings,
@@ -29,7 +36,14 @@ def test_format_lifecycle_event_includes_required_fields() -> None:
 
 
 def test_format_lifecycle_event_omits_empty_reason() -> None:
-    settings = load_config({"MQTT_HOST": "core.local", "DEVICE_ID": "edge-01"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "DEVICE_ID": "edge-01",
+        }
+    )
 
     event = format_lifecycle_event(settings, MAINTENANCE_STARTED, reason="")
 
@@ -37,7 +51,13 @@ def test_format_lifecycle_event_omits_empty_reason() -> None:
 
 
 def test_format_lifecycle_event_rejects_unknown_type() -> None:
-    settings = load_config({"MQTT_HOST": "core.local"})
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+        }
+    )
 
     with pytest.raises(ValueError, match="Unsupported lifecycle event type"):
         format_lifecycle_event(settings, "unknown")

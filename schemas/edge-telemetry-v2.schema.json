@@ -9,6 +9,10 @@
     "device_id": { "type": "string", "minLength": 1 },
     "timestamp_utc": { "$ref": "#/$defs/utcTimestamp" },
     "heartbeat_utc": { "$ref": "#/$defs/utcTimestamp" },
+    "record_id": { "type": "string", "minLength": 1 },
+    "boot_id": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "stored_at_utc": { "$ref": "#/$defs/utcTimestamp" },
     "pods": {
       "type": "object",
       "required": ["pod_1", "pod_2"],
@@ -44,6 +48,12 @@
           "type": "object",
           "additionalProperties": {
             "type": ["string", "number", "integer", "boolean"]
+          }
+        },
+        "spool": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "number", "integer", "boolean", "null"]
           }
         },
         "errors": {

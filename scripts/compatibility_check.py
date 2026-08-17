@@ -22,6 +22,7 @@ from src.config import ConfigError, Settings, load_config  # noqa: E402
 from src.network.http_sender import HttpSender  # noqa: E402
 from src.network.mqtt_sender import MqttSender  # noqa: E402
 from src.network.photo_sender import HttpPhotoSender  # noqa: E402
+from src.telemetry_spool import DeliveryStatus  # noqa: E402
 from src.utils.camera import PHOTO_SCHEMA_VERSION, PhotoRecord  # noqa: E402
 from src.utils.formatter import format_payload  # noqa: E402
 
@@ -99,7 +100,8 @@ def run_compatibility_check(
         StepResult("mqtt_telemetry", mqtt_ok, "MQTT telemetry published." if mqtt_ok else "MQTT publish failed.")
     )
 
-    http_ok = http_sender.send(payload)
+    http_result = http_sender.send(payload)
+    http_ok = http_result.status in {DeliveryStatus.ACCEPTED, DeliveryStatus.DUPLICATE}
     results.append(
         StepResult(
             "http_telemetry",
