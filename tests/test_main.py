@@ -46,6 +46,23 @@ def test_collect_readings_reads_bme280_once_as_shared_sensor(monkeypatch) -> Non
     assert calls == [{"address": settings.bme280_address, "mock": True}]
 
 
+def test_collect_readings_reports_each_potentially_blocking_phase() -> None:
+    settings = _load_config({"MQTT_HOST": "core.local", "MOCK_SENSORS": "true"})
+    phases = []
+
+    collect_readings(settings, phases.append)
+
+    assert "collecting:pod_1:soil_moisture" in phases
+    assert "collecting:pod_1:soil_temperature" in phases
+    assert "collecting:air" in phases
+    assert "collecting:light" in phases
+    assert "collecting:leaf_temperature" in phases
+    assert "collecting:system_health:rpi_core" in phases
+    assert "collecting:system_health:network" in phases
+    assert "collecting:system_health:application" in phases
+    assert "collecting:system_health:ina219" in phases
+
+
 def test_run_includes_health_payload(monkeypatch) -> None:
     settings = _load_config(
         {
@@ -56,15 +73,59 @@ def test_run_includes_health_payload(monkeypatch) -> None:
     )
     repository = FakeRepository()
     worker = FakeWorker(repository.events)
+    lifecycle_worker = FakeLifecycleWorker(repository.events)
 
-    run(settings, repository=repository, delivery_worker=worker, sleep=lambda _seconds: None)
+    run(
+        settings,
+        repository=repository,
+        delivery_worker=worker,
+        lifecycle_replay_worker=lifecycle_worker,
+        sleep=lambda _seconds: None,
+    )
 
     stored = repository.payloads[0]
     assert stored["system_health"]["rpi_core"]["wifi_rssi_dbm"] == -68.0
     assert stored["system_health"]["application"]["process_running"] is True
     assert stored["system_health"]["pod_1_hardware"]["bus_current_ma"] == 12.4
     assert stored["system_health"]["spool"]["status"] == "OK"
+    assert stored["system_health"]["watchdog"]["state"] in {"unavailable", "starting", "healthy"}
+    assert repository.events.index("start") < repository.events.index("enqueue")
+    assert repository.events.index("enqueue") < repository.events.index("lifecycle_notify")
     assert repository.events.index("enqueue") < repository.events.index("notify")
+
+
+def test_run_publishes_startup_heartbeat_before_spool_initialization(monkeypatch) -> None:
+    settings = _load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "MOCK_SENSORS": "true",
+            "MAX_TICKS": "1",
+        }
+    )
+    repository = StartupOrderingRepository()
+    events = repository.events
+    worker = FakeWorker(events)
+    lifecycle_worker = FakeLifecycleWorker(events)
+    heartbeat = RecordingHeartbeat(events)
+
+    def open_spool(_settings, _logger):
+        events.append("open_spool")
+        return repository
+
+    monkeypatch.setattr("src.main._open_spool", open_spool)
+    monkeypatch.setattr("src.main.collect_readings", lambda _settings: {"pod_1": {}, "pod_2": {}, "shared": {}})
+
+    run(
+        settings,
+        delivery_worker=worker,
+        lifecycle_replay_worker=lifecycle_worker,
+        heartbeat_writer=heartbeat,
+        sleep=lambda _seconds: None,
+    )
+
+    assert events.index("heartbeat:startup") < events.index("open_spool")
+    assert events.index("heartbeat:startup") < events.index("import_legacy")
+    assert events.index("heartbeat:startup") < events.index("cleanup_delivered")
 
 
 def test_run_captures_camera_when_interval_is_due(monkeypatch) -> None:
@@ -98,7 +159,69 @@ def test_run_captures_camera_when_interval_is_due(monkeypatch) -> None:
     )
 
     assert captures == ["capture", "capture"]
-    assert photo_sender.upload_calls == 2
+    assert photo_sender.upload_calls == 3
+
+
+def test_run_uploads_newly_captured_photo_in_same_tick(monkeypatch) -> None:
+    settings = _load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "MOCK_SENSORS": "true",
+            "MAX_TICKS": "1",
+            "CAMERA_ENABLED": "true",
+            "PHOTO_UPLOAD_ENABLED": "true",
+            "PHOTO_UPLOAD_URL": "https://core.example/photos",
+        }
+    )
+    operations = []
+    repository = FakeRepository()
+    worker = FakeWorker(repository.events)
+    photo_sender = FakePhotoSender(operations)
+    monkeypatch.setattr("src.main.collect_readings", lambda _settings: {"pod_1": {}, "pod_2": {}, "shared": {}})
+
+    run(
+        settings,
+        camera_capture=lambda *_args, **_kwargs: operations.append("capture"),
+        photo_sender=photo_sender,
+        repository=repository,
+        delivery_worker=worker,
+        sleep=lambda _seconds: None,
+        monotonic=lambda: 0.0,
+    )
+
+    assert operations == ["capture", "upload"]
+    assert photo_sender.upload_calls == 1
+
+
+def test_run_notifies_lifecycle_replay_after_each_persist(monkeypatch) -> None:
+    settings = _load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "MOCK_SENSORS": "true",
+            "MAX_TICKS": "3",
+        }
+    )
+    repository = FakeRepository()
+    worker = FakeWorker(repository.events)
+    lifecycle_events = []
+    lifecycle_worker = FakeLifecycleWorker(lifecycle_events)
+    monkeypatch.setattr("src.main.collect_readings", lambda _settings: {"pod_1": {}, "pod_2": {}, "shared": {}})
+
+    run(
+        settings,
+        sleep=lambda _seconds: None,
+        repository=repository,
+        delivery_worker=worker,
+        lifecycle_replay_worker=lifecycle_worker,
+    )
+
+    assert lifecycle_events == [
+        "lifecycle_start",
+        "lifecycle_notify",
+        "lifecycle_notify",
+        "lifecycle_notify",
+        "lifecycle_stop",
+    ]
 
 
 def test_run_skips_camera_when_disabled(monkeypatch) -> None:
@@ -157,14 +280,66 @@ def test_run_suspends_sampling_and_camera_on_degraded_spool_disk(monkeypatch) ->
     assert collected == []
     assert captured == []
     assert repository.payloads == []
+    assert repository.events == ["start", "stop", "close"]
+
+
+def test_run_starts_delivery_but_not_event_replay_before_fresh_persist_succeeds(monkeypatch) -> None:
+    settings = _load_config({"MQTT_HOST": "core.local", "MOCK_SENSORS": "true"})
+    repository = FailingRepository()
+    worker = FakeWorker(repository.events)
+    lifecycle_events = []
+    lifecycle_worker = FakeLifecycleWorker(lifecycle_events)
+    monkeypatch.setattr("src.main.collect_readings", lambda _settings: {"pod_1": {}, "pod_2": {}, "shared": {}})
+
+    with pytest.raises(StopLoop):
+        run(
+            settings,
+            repository=repository,
+            delivery_worker=worker,
+            lifecycle_replay_worker=lifecycle_worker,
+            sleep=lambda _seconds: (_ for _ in ()).throw(StopLoop()),
+        )
+
+    assert repository.events == ["start", "enqueue_failed", "stop", "close"]
+    assert "lifecycle_notify" not in lifecycle_events
+    assert "notify" not in repository.events
+
+
+def test_run_stops_worker_before_closing_repository_when_final_heartbeat_fails(monkeypatch, caplog) -> None:
+    settings = _load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "MOCK_SENSORS": "true",
+            "MAX_TICKS": "1",
+        }
+    )
+    repository = FakeRepository()
+    worker = FakeWorker(repository.events)
+    heartbeat = FailingShutdownHeartbeat()
+    monkeypatch.setattr("src.main.collect_readings", lambda _settings: {"pod_1": {}, "pod_2": {}, "shared": {}})
+
+    run(
+        settings,
+        repository=repository,
+        delivery_worker=worker,
+        heartbeat_writer=heartbeat,
+        sleep=lambda _seconds: None,
+    )
+
+    assert heartbeat.phases[-1] == "stopping"
+    assert repository.events[-2:] == ["stop", "close"]
+    assert "Final watchdog heartbeat write failed" in caplog.text
 
 
 class FakePhotoSender:
-    def __init__(self) -> None:
+    def __init__(self, events=None) -> None:
         self.upload_calls = 0
+        self.events = events
 
-    def send_pending(self) -> int:
+    def send_pending(self, **_kwargs) -> int:
         self.upload_calls += 1
+        if self.events is not None:
+            self.events.append("upload")
         return 0
 
 
@@ -207,9 +382,66 @@ class FakeWorker:
         self.events.append("stop")
 
 
+class FakeLifecycleWorker:
+    def __init__(self, events) -> None:
+        self.events = events
+
+    def start(self):
+        self.events.append("lifecycle_start")
+
+    def notify(self):
+        self.events.append("lifecycle_notify")
+
+    def stop(self):
+        self.events.append("lifecycle_stop")
+
+
+class FailingShutdownHeartbeat:
+    def __init__(self) -> None:
+        self.phases = []
+
+    def write(self, phase, **_details):
+        self.phases.append(phase)
+        if phase == "stopping":
+            raise OSError("simulated full disk")
+
+    def persisted(self, _record_id=None):
+        self.phases.append("persisted")
+
+
+class RecordingHeartbeat:
+    def __init__(self, events) -> None:
+        self.events = events
+
+    def write(self, phase, **_details):
+        self.events.append(f"heartbeat:{phase}")
+
+    def persisted(self, _record_id=None):
+        self.events.append("heartbeat:persisted")
+
+
 class DegradedDiskRepository(FakeRepository):
     def health(self):
         return {"status": "DEGRADED", "disk_status": "DEGRADED", "pending_count": 2, "in_flight_count": 0}
+
+
+class StartupOrderingRepository(FakeRepository):
+    def import_legacy(self, _directory):
+        self.events.append("import_legacy")
+        return 0, []
+
+    def cleanup_delivered(self, _days):
+        self.events.append("cleanup_delivered")
+        return 0
+
+
+class FailingRepository(FakeRepository):
+    def enqueue(self, payload):
+        self.events.append("enqueue_failed")
+        raise OSError("simulated SQLite write failure")
+
+    def increment_counter(self, _name):
+        return 1
 
 
 class StopLoop(Exception):

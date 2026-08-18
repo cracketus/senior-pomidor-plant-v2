@@ -5,6 +5,7 @@ MODE="hardware"
 AUTO_REBOOT="false"
 SKIP_START="false"
 INSTALL_WIFI_GUARD="false"
+INSTALL_WATCHDOG="false"
 REBOOT_NEEDED="false"
 DEVICE_ID_VALUE=""
 MQTT_HOST_VALUE=""
@@ -15,7 +16,7 @@ POD2_ENABLED_VALUE=""
 
 usage() {
   cat <<'EOF'
-Usage: scripts/setup_raspberry_pi.sh [--hardware|--mock] [--auto-reboot] [--skip-start]
+Usage: scripts/setup_raspberry_pi.sh [--hardware|--mock] [--auto-reboot] [--install-watchdog] [--skip-start]
 
 Options:
   --hardware      Prepare Raspberry Pi real sensor mode and run docker-compose.yml. Default.
@@ -29,6 +30,8 @@ Options:
   --auto-reboot   Reboot automatically if I2C or 1-Wire was enabled during this run.
   --install-wifi-guard
                  Install a root systemd timer that backs up and restores NetworkManager Wi-Fi profiles.
+  --install-watchdog
+                 Install the host supervisor and Raspberry Pi runtime hardware watchdog (hardware mode only).
   --skip-start    Prepare the host and .env, but do not start the container.
   -h, --help      Show this help.
 
@@ -88,6 +91,9 @@ while [ "$#" -gt 0 ]; do
       ;;
     --install-wifi-guard)
       INSTALL_WIFI_GUARD="true"
+      ;;
+    --install-watchdog)
+      INSTALL_WATCHDOG="true"
       ;;
     --skip-start)
       SKIP_START="true"
@@ -179,6 +185,9 @@ enable_hardware_interfaces() {
   log "Ensuring I2C and 1-Wire are enabled in $config_file"
   ensure_line "$config_file" "dtparam=i2c_arm=on" "^dtparam=i2c_arm=on$"
   ensure_line "$config_file" "dtoverlay=w1-gpio" "^dtoverlay=w1-gpio"
+  if [ "$INSTALL_WATCHDOG" = "true" ]; then
+    ensure_line "$config_file" "dtparam=watchdog=on" "^dtparam=watchdog=on$"
+  fi
 }
 
 prepare_env_file() {
@@ -256,6 +265,41 @@ EOF
   "${SUDO[@]}" systemctl enable --now senior-pomidor-wifi-guard.timer
 }
 
+install_edge_watchdog() {
+  [ "$INSTALL_WATCHDOG" = "true" ] || return
+  [ "$MODE" = "hardware" ] || die "--install-watchdog is supported only with --hardware"
+  if [ ! -r /proc/device-tree/model ] || ! grep -qi "Raspberry Pi" /proc/device-tree/model; then
+    die "--install-watchdog requires Raspberry Pi hardware"
+  fi
+
+  local repo_dir
+  repo_dir="$(pwd)"
+  log "Installing edge service and layered host watchdog"
+  chmod +x scripts/edge_watchdog.py
+  sed "s|/opt/senior-pomidor-plant-v2|${repo_dir}|g" deploy/systemd/senior-pomidor-edge.service \
+    | "${SUDO[@]}" tee /etc/systemd/system/senior-pomidor-edge.service >/dev/null
+  sed "s|/opt/senior-pomidor-plant-v2|${repo_dir}|g" deploy/systemd/senior-pomidor-watchdog.service \
+    | "${SUDO[@]}" tee /etc/systemd/system/senior-pomidor-watchdog.service >/dev/null
+
+  log "Building edge image before enabling watchdog recovery"
+  "${SUDO[@]}" docker compose build senior-pomidor-edge
+
+  "${SUDO[@]}" mkdir -p /etc/systemd/system.conf.d
+  cat <<'EOF' | "${SUDO[@]}" tee /etc/systemd/system.conf.d/senior-pomidor-hardware-watchdog.conf >/dev/null
+[Manager]
+RuntimeWatchdogSec=30s
+RebootWatchdogSec=10min
+EOF
+
+  "${SUDO[@]}" systemctl daemon-reexec
+  "${SUDO[@]}" systemctl daemon-reload
+  "${SUDO[@]}" systemctl enable senior-pomidor-edge.service senior-pomidor-watchdog.service
+  if [ "$SKIP_START" != "true" ]; then
+    "${SUDO[@]}" systemctl restart senior-pomidor-edge.service
+    "${SUDO[@]}" systemctl restart senior-pomidor-watchdog.service
+  fi
+}
+
 install_host_packages
 install_docker
 
@@ -276,5 +320,8 @@ if [ "$REBOOT_NEEDED" = "true" ]; then
   exit 0
 fi
 
-start_container
+install_edge_watchdog
+if [ "$INSTALL_WATCHDOG" != "true" ]; then
+  start_container
+fi
 log "Setup complete."

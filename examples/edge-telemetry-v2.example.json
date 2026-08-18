@@ -54,6 +54,15 @@
       "preferred_profile_present": true,
       "last_recovery_exit_code": 0
     },
+    "watchdog": {
+      "state": "healthy",
+      "result": "healthy",
+      "suppression": false,
+      "attempt_count": 1,
+      "restart_count": 1,
+      "reboot_count": 0,
+      "last_healthy_heartbeat_at_utc": "2026-06-06T10:00:01Z"
+    },
     "pod_1_hardware": {
       "bus_voltage_v": 3.25,
       "bus_current_ma": 12.4

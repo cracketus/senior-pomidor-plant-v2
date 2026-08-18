@@ -11,7 +11,9 @@ from src.config import Settings
 EVENT_SCHEMA_VERSION = "senior-pomidor.edge.event.v1"
 MAINTENANCE_STARTED = "maintenance_started"
 MAINTENANCE_COMPLETED = "maintenance_completed"
-SUPPORTED_EVENT_TYPES = {MAINTENANCE_STARTED, MAINTENANCE_COMPLETED}
+RECOVERY_STARTED = "recovery_started"
+RECOVERY_COMPLETED = "recovery_completed"
+SUPPORTED_EVENT_TYPES = {MAINTENANCE_STARTED, MAINTENANCE_COMPLETED, RECOVERY_STARTED, RECOVERY_COMPLETED}
 
 
 def format_lifecycle_event(

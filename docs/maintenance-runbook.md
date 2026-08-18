@@ -65,7 +65,7 @@ Emit the planned maintenance start event before stopping the container, rebootin
 python scripts/maintenance_event.py start --reason "monthly sensor service"
 ```
 
-If the command exits with code `1`, the event was saved locally and will be retried the next time a maintenance event command runs. Do not treat that as a blocker when the maintenance window itself is intentional.
+This command atomically creates `WATCHDOG_MAINTENANCE_FILE` before attempting network delivery, so an installed host watchdog will not restart the intentionally stopped service or consume recovery budgets. If the command exits with code `1`, the event was saved locally and will be retried the next time a maintenance event command runs; the maintenance hold is still active. Do not treat that as a blocker when the maintenance window itself is intentional. Exit code `2` means configuration or maintenance-hold persistence failed; do not stop the supervised service until that error is corrected.
 
 ## OS Updates
 
@@ -218,6 +218,8 @@ Emit the planned maintenance completion event after the edge service is healthy 
 ```bash
 python scripts/maintenance_event.py complete --reason "monthly sensor service"
 ```
+
+The completion command removes the maintenance hold before publishing the completion event. Run it only after the edge service is healthy. If completion event delivery is queued, watchdog recovery still resumes normally.
 
 ## Rollback And Recovery
 

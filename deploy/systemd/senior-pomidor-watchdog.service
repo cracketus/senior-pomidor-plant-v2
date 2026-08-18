@@ -1,0 +1,26 @@
+[Unit]
+Description=Senior Pomidor layered edge watchdog
+Documentation=https://github.com/cracketus/senior-pomidor-plant-v2
+After=local-fs.target senior-pomidor-edge.service
+Wants=senior-pomidor-edge.service
+
+[Service]
+Type=notify
+User=root
+WorkingDirectory=/opt/senior-pomidor-plant-v2
+EnvironmentFile=-/opt/senior-pomidor-plant-v2/.env
+ExecStart=/usr/bin/python3 /opt/senior-pomidor-plant-v2/scripts/edge_watchdog.py
+Restart=always
+RestartSec=10
+WatchdogSec=60
+NotifyAccess=main
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/senior-pomidor-plant-v2/data
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=senior-pomidor-watchdog
+
+[Install]
+WantedBy=multi-user.target

@@ -14,6 +14,7 @@ from src.config import ConfigError, load_config  # noqa: E402
 from src.lifecycle import emit_lifecycle_event  # noqa: E402
 from src.utils.events import MAINTENANCE_COMPLETED, MAINTENANCE_STARTED  # noqa: E402
 from src.utils.logger import configure_logger  # noqa: E402
+from src.watchdog import set_maintenance_hold  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -30,7 +31,21 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("Configuration error: %s", exc)
         return 2
 
-    delivered = emit_lifecycle_event(settings, event_type, reason=args.reason, logger=logger)
+    try:
+        set_maintenance_hold(
+            settings.watchdog_maintenance_file,
+            args.action == "start",
+            reason=args.reason,
+        )
+    except OSError as exc:
+        logger.error("Maintenance hold update failed; refusing lifecycle transition: %s", exc)
+        return 2
+
+    try:
+        delivered = emit_lifecycle_event(settings, event_type, reason=args.reason, logger=logger)
+    except Exception as exc:  # noqa: BLE001 - operator command must report failures without a traceback
+        logger.error("Lifecycle event failed unexpectedly: %s", exc)
+        return 2
     if delivered:
         logger.info("Lifecycle event delivered: %s", event_type)
         return 0

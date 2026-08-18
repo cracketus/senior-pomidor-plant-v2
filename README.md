@@ -240,11 +240,15 @@ Use explicit lifecycle events when intentionally shutting down the Raspberry Pi 
 python scripts/maintenance_event.py start --reason "sensor service"
 ```
 
+When the host watchdog is installed, this also creates the persistent maintenance hold configured by `WATCHDOG_MAINTENANCE_FILE`; do not stop the service if the command exits with code `2`.
+
 After the Pi and edge service are back, run:
 
 ```bash
 python scripts/maintenance_event.py complete --reason "sensor service"
 ```
+
+Completion clears the maintenance hold so watchdog recovery resumes.
 
 The event payload uses schema version `senior-pomidor.edge.event.v1` and includes `event_id`, `device_id`, `event_type`, `timestamp_utc`, `source`, and optional `reason`. Supported event types are `maintenance_started` and `maintenance_completed`.
 
@@ -553,6 +557,14 @@ To install the optional host-level Wi-Fi guard that backs up `.nmconnection` fil
 ./scripts/setup_raspberry_pi.sh --hardware --install-wifi-guard
 ```
 
+For bounded host-side recovery from a killed or frozen collector, explicitly install the layered watchdog:
+
+```bash
+./scripts/setup_raspberry_pi.sh --hardware --install-watchdog
+```
+
+This installs the edge and supervisor systemd units plus the Raspberry Pi runtime hardware watchdog. Service restart is bounded; controlled reboot is disabled unless `WATCHDOG_ALLOW_REBOOT=true`. Mock and ordinary Docker setup only expose the heartbeat and never perform host actions. See the [layered watchdog runbook](docs/edge-watchdog-runbook.md) for budgets, suppression, disable, and manual recovery.
+
 ### If a Sensor Is Not Detected
 
 - Reboot after enabling I2C or 1-Wire. The setup script will tell you when this is required.
@@ -591,6 +603,7 @@ To install the optional host-level Wi-Fi guard that backs up `.nmconnection` fil
 - `system_health.network.interface_*_error_count` and `interface_*_drop_count` expose interface packet error/drop counters when the OS provides them.
 - `system_health.network.last_recovery_exit_code` comes from the optional host Wi-Fi guard status file. `0` means the last guard run completed successfully; non-zero values need host-side investigation.
 - `system_health.application` reports process liveness and uptime. When `SERVICE_NAME` is configured and systemd is available, it also reports service active/substate and main PID.
+- `system_health.watchdog` reports the independent supervisor state, recovery counters, last healthy persisted heartbeat, and suppression status.
 
 ### Reading Error Fields
 

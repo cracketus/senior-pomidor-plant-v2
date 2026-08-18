@@ -6,7 +6,7 @@ from src.config import ConfigError, load_config
 from src.network.event_sender import MqttEventSender
 from src.network.http_sender import HttpSender
 from src.network.mqtt_sender import MqttSender
-from src.network.photo_sender import HttpPhotoSender
+from src.network.photo_sender import PHOTO_REPLAY_BATCH_SIZE, HttpPhotoSender
 from src.telemetry_spool import DeliveryStatus
 from src.utils.camera import PhotoRecord
 
@@ -181,6 +181,69 @@ def test_http_photo_sender_disabled_returns_zero(tmp_path) -> None:
     )
 
     assert HttpPhotoSender(settings).send_pending() == 0
+
+
+def test_http_photo_sender_bounds_replay_and_reports_progress(monkeypatch) -> None:
+    settings = _load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "PHOTO_UPLOAD_ENABLED": "true",
+            "PHOTO_UPLOAD_URL": "https://core.example/photos",
+        }
+    )
+    records = [PhotoRecord(None, None, {"photo_id": f"photo-{index}"}) for index in range(20)]
+    sender = HttpPhotoSender(settings)
+    sent = []
+    progress = []
+    monkeypatch.setattr("src.network.photo_sender.list_pending_photos", lambda _settings: records)
+    monkeypatch.setattr(sender, "send", lambda record: sent.append(record) or True)
+
+    uploaded = sender.send_pending(progress=progress.append)
+
+    assert uploaded == PHOTO_REPLAY_BATCH_SIZE
+    assert sent == records[:PHOTO_REPLAY_BATCH_SIZE]
+    assert progress == [f"uploading_photo:photo-{index}" for index in range(PHOTO_REPLAY_BATCH_SIZE)]
+
+
+def test_http_photo_sender_advances_past_failed_batch(monkeypatch) -> None:
+    settings = _load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "PHOTO_UPLOAD_ENABLED": "true",
+            "PHOTO_UPLOAD_URL": "https://core.example/photos",
+        }
+    )
+    records = [PhotoRecord(None, None, {"photo_id": f"photo-{index}"}) for index in range(20)]
+    sender = HttpPhotoSender(settings)
+    sent = []
+    monkeypatch.setattr("src.network.photo_sender.list_pending_photos", lambda _settings: records)
+    monkeypatch.setattr(sender, "send", lambda record: sent.append(record) and False)
+
+    sender.send_pending()
+    sender.send_pending()
+
+    assert sent == records
+
+
+def test_http_photo_sender_retries_failures_while_new_photos_arrive(monkeypatch) -> None:
+    settings = _load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "PHOTO_UPLOAD_ENABLED": "true",
+            "PHOTO_UPLOAD_URL": "https://core.example/photos",
+        }
+    )
+    records = [PhotoRecord(None, None, {"photo_id": "failed-photo"})]
+    sender = HttpPhotoSender(settings)
+    sent_ids = []
+    monkeypatch.setattr("src.network.photo_sender.list_pending_photos", lambda _settings: records)
+    monkeypatch.setattr(sender, "send", lambda record: sent_ids.append(record.metadata["photo_id"]) and False)
+
+    for index in range(3):
+        sender.send_pending(limit=1)
+        records.append(PhotoRecord(None, None, {"photo_id": f"new-photo-{index}"}))
+
+    assert sent_ids == ["failed-photo", "failed-photo", "new-photo-0"]
 
 
 class FailingMqttClient:

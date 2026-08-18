@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw
 
 from src.config import load_config
 from src.utils.camera import capture_photo
-from src.utils.events import MAINTENANCE_STARTED, format_lifecycle_event
+from src.utils.events import MAINTENANCE_STARTED, RECOVERY_STARTED, format_lifecycle_event
 from src.utils.formatter import format_payload
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,6 +93,16 @@ def test_lifecycle_event_validates_against_schema() -> None:
     )
 
     _validate(_read_json(SCHEMA_DIR / "edge-event-v1.schema.json"), event)
+
+    recovery_event = format_lifecycle_event(
+        settings,
+        RECOVERY_STARTED,
+        reason="stale heartbeat",
+        source="host_watchdog",
+        timestamp=datetime(2026, 6, 6, 10, 1, tzinfo=UTC),
+        event_id="event-2",
+    )
+    _validate(_read_json(SCHEMA_DIR / "edge-event-v1.schema.json"), recovery_event)
 
 
 def test_capture_photo_metadata_validates_against_schema(tmp_path) -> None:
