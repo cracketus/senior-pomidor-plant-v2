@@ -220,3 +220,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 docs/cat5e_breakout.txt
+docs/ai-harness-plan.md
+
+# tmp
+.tmp/

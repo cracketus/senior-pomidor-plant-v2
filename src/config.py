@@ -84,6 +84,19 @@ class Settings:
     ads1115_pod2_wet_reading: float
     ds18b20_pod1_rom: str | None
     ds18b20_pod2_rom: str | None
+    watchdog_heartbeat_file: str
+    watchdog_status_file: str
+    watchdog_history_file: str
+    watchdog_maintenance_file: str
+    watchdog_poll_seconds: int
+    watchdog_timeout_seconds: int
+    watchdog_startup_grace_seconds: int
+    watchdog_restart_limit: int
+    watchdog_restart_window_seconds: int
+    watchdog_cooldown_seconds: int
+    watchdog_reboot_limit: int
+    watchdog_reboot_window_seconds: int
+    watchdog_allow_reboot: bool
     max_ticks: int | None
 
 
@@ -105,9 +118,10 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
     mock_sensors = _bool(env, "MOCK_SENSORS", _default_mock_sensors(platform_name))
     _validate_platform_mode(mock_sensors, platform_name)
 
+    poll_interval_seconds = _int(env, "POLL_INTERVAL_SECONDS", 60, minimum=1)
     settings = Settings(
         device_id=_string(env, "DEVICE_ID", "balcony-edge-01"),
-        poll_interval_seconds=_int(env, "POLL_INTERVAL_SECONDS", 60, minimum=1),
+        poll_interval_seconds=poll_interval_seconds,
         mock_sensors=mock_sensors,
         pod1_enabled=_bool(env, "POD1_ENABLED", True),
         pod2_enabled=_bool(env, "POD2_ENABLED", True),
@@ -184,11 +198,28 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
         ads1115_pod2_wet_reading=_float_alias(env, "ADS1115_POD2_WET_READING", "ADS1115_POD2_WET_VOLTAGE", 7220.0),
         ds18b20_pod1_rom=_optional(env, "DS18B20_POD1_ROM"),
         ds18b20_pod2_rom=_optional(env, "DS18B20_POD2_ROM"),
+        watchdog_heartbeat_file=_string(env, "WATCHDOG_HEARTBEAT_FILE", "data/watchdog/heartbeat.json"),
+        watchdog_status_file=_string(env, "WATCHDOG_STATUS_FILE", "data/watchdog/status.json"),
+        watchdog_history_file=_string(env, "WATCHDOG_HISTORY_FILE", "data/watchdog/history.json"),
+        watchdog_maintenance_file=_string(env, "WATCHDOG_MAINTENANCE_FILE", "data/watchdog/maintenance.json"),
+        watchdog_poll_seconds=_int(env, "WATCHDOG_POLL_SECONDS", 15, minimum=1),
+        watchdog_timeout_seconds=_int(env, "WATCHDOG_TIMEOUT_SECONDS", max(180, 3 * poll_interval_seconds), minimum=1),
+        watchdog_startup_grace_seconds=_int(
+            env, "WATCHDOG_STARTUP_GRACE_SECONDS", max(180, 3 * poll_interval_seconds), minimum=0
+        ),
+        watchdog_restart_limit=_int(env, "WATCHDOG_RESTART_LIMIT", 3, minimum=1),
+        watchdog_restart_window_seconds=_int(env, "WATCHDOG_RESTART_WINDOW_SECONDS", 1800, minimum=1),
+        watchdog_cooldown_seconds=_int(env, "WATCHDOG_COOLDOWN_SECONDS", 300, minimum=0),
+        watchdog_reboot_limit=_int(env, "WATCHDOG_REBOOT_LIMIT", 1, minimum=0),
+        watchdog_reboot_window_seconds=_int(env, "WATCHDOG_REBOOT_WINDOW_SECONDS", 3600, minimum=1),
+        watchdog_allow_reboot=_bool(env, "WATCHDOG_ALLOW_REBOOT", False),
         max_ticks=_optional_int(env, "MAX_TICKS", minimum=1),
     )
 
     if not settings.pod1_enabled and not settings.pod2_enabled:
         raise ConfigError("At least one pod must be enabled")
+    if settings.watchdog_timeout_seconds <= settings.poll_interval_seconds:
+        raise ConfigError("WATCHDOG_TIMEOUT_SECONDS must be greater than POLL_INTERVAL_SECONDS")
     _validate_calibration("ADS1115_POD1", settings.ads1115_pod1_dry_reading, settings.ads1115_pod1_wet_reading)
     _validate_calibration("ADS1115_POD2", settings.ads1115_pod2_dry_reading, settings.ads1115_pod2_wet_reading)
     if not (
@@ -243,6 +274,11 @@ def public_settings(settings: Settings) -> dict[str, object]:
         "wifi_interface": settings.wifi_interface,
         "disk_usage_path": settings.disk_usage_path,
         "service_name": settings.service_name,
+        "watchdog_heartbeat_file": settings.watchdog_heartbeat_file,
+        "watchdog_status_file": settings.watchdog_status_file,
+        "watchdog_maintenance_file": settings.watchdog_maintenance_file,
+        "watchdog_timeout_seconds": settings.watchdog_timeout_seconds,
+        "watchdog_allow_reboot": settings.watchdog_allow_reboot,
     }
 
 

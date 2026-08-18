@@ -1,8 +1,9 @@
 import json
 import os
+import threading
 
 from src.config import load_config
-from src.lifecycle import EVENT_REPLAY_BATCH_SIZE, emit_lifecycle_event, replay_pending_events
+from src.lifecycle import EVENT_REPLAY_BATCH_SIZE, LifecycleReplayWorker, emit_lifecycle_event, replay_pending_events
 from src.utils.events import MAINTENANCE_COMPLETED, MAINTENANCE_STARTED
 
 
@@ -128,6 +129,34 @@ def test_replay_pending_events_processes_at_most_batch_size(tmp_path) -> None:
 
     assert delivered == EVENT_REPLAY_BATCH_SIZE
     assert len(list(tmp_path.glob("*.json"))) == 1
+
+
+def test_lifecycle_replay_worker_does_not_block_notifying_collector(tmp_path) -> None:
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "LOCAL_EVENT_DIR": str(tmp_path),
+        }
+    )
+    replay_started = threading.Event()
+    release_replay = threading.Event()
+
+    def blocking_replay(_settings, _sender):
+        replay_started.set()
+        release_replay.wait(2)
+        return 0
+
+    worker = LifecycleReplayWorker(settings, FakeEventSender([]), replay=blocking_replay)
+    worker.start()
+    try:
+        worker.notify()
+        assert replay_started.wait(1)
+        assert not release_replay.is_set()
+    finally:
+        release_replay.set()
+        worker.stop()
 
 
 class FakeEventSender:

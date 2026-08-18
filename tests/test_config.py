@@ -43,6 +43,7 @@ def test_config_parses_local_storage_settings() -> None:
             "LOCAL_EVENT_DIR": "/var/lib/senior-pomidor/events",
             "LOCAL_STORAGE_MAX_AGE_DAYS": "14",
             "LOCAL_STORAGE_MAX_SIZE_MB": "128",
+            "WATCHDOG_MAINTENANCE_FILE": "/var/lib/senior-pomidor/watchdog/maintenance.json",
         },
         platform_name="Linux",
     )
@@ -51,6 +52,7 @@ def test_config_parses_local_storage_settings() -> None:
     assert settings.local_event_dir == "/var/lib/senior-pomidor/events"
     assert settings.local_storage_max_age_days == 14
     assert settings.local_storage_max_size_mb == 128
+    assert settings.watchdog_maintenance_file == "/var/lib/senior-pomidor/watchdog/maintenance.json"
 
 
 def test_config_parses_camera_defaults() -> None:
@@ -315,3 +317,36 @@ def test_mock_sensors_default_to_false_on_linux() -> None:
 def test_http_url_required_when_http_enabled() -> None:
     with pytest.raises(ConfigError, match="CORE_HTTP_URL"):
         load_config({"MQTT_HOST": "core.local", "HTTP_ENABLED": "true"})
+
+
+def test_watchdog_defaults_scale_with_poll_interval_and_disable_reboot() -> None:
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "POLL_INTERVAL_SECONDS": "90",
+        }
+    )
+
+    assert settings.watchdog_timeout_seconds == 270
+    assert settings.watchdog_restart_limit == 3
+    assert settings.watchdog_restart_window_seconds == 1800
+    assert settings.watchdog_cooldown_seconds == 300
+    assert settings.watchdog_reboot_limit == 1
+    assert settings.watchdog_reboot_window_seconds == 3600
+    assert settings.watchdog_allow_reboot is False
+
+
+@pytest.mark.parametrize("timeout", [59, 60])
+def test_watchdog_timeout_must_exceed_collection_poll_interval(timeout) -> None:
+    with pytest.raises(ConfigError, match="WATCHDOG_TIMEOUT_SECONDS must be greater than POLL_INTERVAL_SECONDS"):
+        load_config(
+            {
+                "MQTT_HOST": "core.local",
+                "HTTP_ENABLED": "true",
+                "CORE_HTTP_URL": "https://core.example/telemetry",
+                "POLL_INTERVAL_SECONDS": "60",
+                "WATCHDOG_TIMEOUT_SECONDS": str(timeout),
+            }
+        )

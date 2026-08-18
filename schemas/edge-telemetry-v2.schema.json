@@ -56,6 +56,12 @@
             "type": ["string", "number", "integer", "boolean", "null"]
           }
         },
+        "watchdog": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "number", "integer", "boolean", "null"]
+          }
+        },
         "errors": {
           "type": "array",
           "items": { "$ref": "#/$defs/error" }

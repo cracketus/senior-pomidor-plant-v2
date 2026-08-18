@@ -10,6 +10,7 @@ from src.config import Settings
 from src.utils.camera import PHOTO_SCHEMA_VERSION, PhotoRecord, list_pending_photos, mark_photo_uploaded
 
 PostFunc = Callable[..., Any]
+PHOTO_REPLAY_BATCH_SIZE = 10
 
 
 class HttpPhotoSender:
@@ -22,19 +23,51 @@ class HttpPhotoSender:
         self.settings = settings
         self.logger = logger or logging.getLogger(__name__)
         self.post_func = post_func
+        self._attempted_photo_ids: set[str] = set()
+        self._replay_round_photo_ids: set[str] = set()
 
-    def send_pending(self) -> int:
+    def send_pending(
+        self,
+        *,
+        limit: int = PHOTO_REPLAY_BATCH_SIZE,
+        progress: Callable[[str], Any] | None = None,
+    ) -> int:
         if not self.settings.photo_upload_enabled:
             return 0
         if not self.settings.photo_upload_url:
             self.logger.error("Photo upload is enabled but PHOTO_UPLOAD_URL is missing")
             return 0
 
+        pending = list_pending_photos(self.settings)
+        pending_ids = {self._record_id(record) for record in pending}
+        self._attempted_photo_ids.intersection_update(pending_ids)
+        self._replay_round_photo_ids.intersection_update(pending_ids)
+        candidates = [
+            record
+            for record in pending
+            if self._record_id(record) in self._replay_round_photo_ids
+            and self._record_id(record) not in self._attempted_photo_ids
+        ]
+        if pending and not candidates:
+            self._attempted_photo_ids.clear()
+            self._replay_round_photo_ids = pending_ids
+            candidates = pending
+
         uploaded = 0
-        for record in list_pending_photos(self.settings):
+        for record in candidates[:limit]:
+            self._attempted_photo_ids.add(self._record_id(record))
+            if progress is not None:
+                progress(f"uploading_photo:{record.metadata.get('photo_id', 'unknown')}")
             if self.send(record):
                 uploaded += 1
         return uploaded
+
+    @staticmethod
+    def _record_id(record: PhotoRecord) -> str:
+        photo_id = record.metadata.get("photo_id")
+        if photo_id:
+            return str(photo_id)
+        return str(record.metadata_path)
 
     def send(self, record: PhotoRecord) -> bool:
         if not self.settings.photo_upload_enabled:

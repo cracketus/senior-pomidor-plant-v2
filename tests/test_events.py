@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import pytest
 
 from src.config import load_config
-from src.utils.events import EVENT_SCHEMA_VERSION, MAINTENANCE_STARTED, format_lifecycle_event
+from src.utils.events import EVENT_SCHEMA_VERSION, MAINTENANCE_STARTED, RECOVERY_COMPLETED, format_lifecycle_event
 
 
 def test_format_lifecycle_event_includes_required_fields() -> None:
@@ -61,3 +61,12 @@ def test_format_lifecycle_event_rejects_unknown_type() -> None:
 
     with pytest.raises(ValueError, match="Unsupported lifecycle event type"):
         format_lifecycle_event(settings, "unknown")
+
+
+def test_format_lifecycle_event_supports_watchdog_recovery() -> None:
+    settings = load_config(
+        {"MQTT_HOST": "core.local", "HTTP_ENABLED": "true", "CORE_HTTP_URL": "https://core.example/telemetry"}
+    )
+    event = format_lifecycle_event(settings, RECOVERY_COMPLETED, source="host_watchdog")
+    assert event["event_type"] == "recovery_completed"
+    assert event["source"] == "host_watchdog"

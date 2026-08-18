@@ -23,6 +23,7 @@ sudo cp .env.example /etc/senior-pomidor/edge.env
 sudo nano /etc/senior-pomidor/edge.env
 sudo cp /etc/senior-pomidor/edge.env .env
 sudo cp deploy/systemd/senior-pomidor-edge.service /etc/systemd/system/senior-pomidor-edge.service
+sudo docker compose build senior-pomidor-edge
 sudo systemctl daemon-reload
 sudo systemctl enable --now senior-pomidor-edge.service
 ```
@@ -55,6 +56,7 @@ cd /opt/senior-pomidor-plant-v2
 git fetch origin
 git pull --ff-only origin main
 sudo cp /etc/senior-pomidor/edge.env .env
+sudo docker compose build senior-pomidor-edge
 sudo systemctl restart senior-pomidor-edge.service
 ```
 
