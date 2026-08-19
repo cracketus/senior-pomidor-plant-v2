@@ -158,7 +158,7 @@ set_env_value() {
 install_host_packages() {
   log "Installing host packages"
   "${SUDO[@]}" apt-get update
-  "${SUDO[@]}" apt-get install -y ca-certificates curl git i2c-tools fswebcam v4l-utils libgpiod2 wireless-tools
+  "${SUDO[@]}" apt-get install -y ca-certificates curl git i2c-tools fswebcam v4l-utils libgpiod2 wireless-tools libraspberrypi-bin
 }
 
 install_docker() {
