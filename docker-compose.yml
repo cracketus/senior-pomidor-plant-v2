@@ -15,6 +15,12 @@ services:
       - /dev/video0:/dev/video0
     volumes:
       - ./data:/app/data
+      - type: bind
+        source: /usr/bin/vcgencmd
+        target: /host/usr/bin/vcgencmd
+        read_only: true
+        bind:
+          create_host_path: false
       - /etc/NetworkManager/system-connections:/etc/NetworkManager/system-connections:ro
       - /run/udev:/run/udev:ro
       - /sys/bus/w1:/sys/bus/w1:ro
