@@ -31,6 +31,8 @@ sudo systemctl enable --now senior-pomidor-edge.service
 Before first start, set at least `MQTT_HOST` and any real hardware IDs in `/etc/senior-pomidor/edge.env`.
 Keep `/opt/senior-pomidor-plant-v2/.env` synchronized with that file because Docker Compose reads `.env` from the project directory.
 
+Keep `INDICATOR_ENABLED=false` during initial deployment. Enable the GPIO indicator only after completing the board-isolation, resistor, ground, and pin checks in [edge-health-indicator.md](edge-health-indicator.md). A GPIO failure is isolated to the indicator worker and is visible in `system_health.indicator`; recovery requires a service restart.
+
 ## Validate
 
 Check service state and logs:

@@ -9,6 +9,8 @@ from contextvars import ContextVar
 from typing import Any
 
 from src.config import ConfigError, Settings, load_config, public_settings
+from src.edge_health import aggregate_edge_health
+from src.indicator.worker import IndicatorWorker, create_indicator_worker
 from src.lifecycle import LifecycleReplayWorker, replay_pending_events
 from src.network.event_sender import MqttEventSender
 from src.network.http_sender import HttpSender
@@ -126,7 +128,10 @@ def _collect_system_health(settings: Settings, phase: Callable[[str], Any] | Non
         "rpi_core": core,
         "network": network,
         "application": application,
-        "watchdog": read_watchdog_health(settings.watchdog_status_file),
+        "watchdog": read_watchdog_health(
+            settings.watchdog_status_file,
+            max_age_seconds=settings.watchdog_poll_seconds * 2,
+        ),
         "pod_1_hardware": {"ina219": pod_hardware},
     }
 
@@ -142,33 +147,44 @@ def run(
     delivery_worker: DeliveryWorker | None = None,
     lifecycle_replay_worker: LifecycleReplayWorker | None = None,
     heartbeat_writer: HeartbeatWriter | None = None,
+    indicator_worker: IndicatorWorker | None = None,
 ) -> None:
     logger = configure_logger()
     heartbeat = heartbeat_writer or HeartbeatWriter(settings.watchdog_heartbeat_file, settings.device_id)
     # Publish this process identity before spool recovery, which may be slow on constrained storage.
     heartbeat.write("startup")
-    mqtt_sender = MqttSender(settings, logger=logger)
-    http_sender = HttpSender(settings, logger=logger)
-    event_sender = MqttEventSender(settings, logger=logger)
-    photo_sender = photo_sender or HttpPhotoSender(settings, logger=logger)
-    repository = repository or _open_spool(settings, logger)
-    repository.import_legacy(settings.local_storage_dir)
-    repository.cleanup_delivered(settings.telemetry_spool_delivered_retention_days)
-    worker = delivery_worker or DeliveryWorker(
-        repository,
-        http_sender,
-        mqtt_sender,
-        batch_size=settings.telemetry_spool_batch_size,
-        rate_limit_per_second=settings.telemetry_spool_rate_limit_per_second,
-        checkpoint_interval_seconds=settings.telemetry_spool_checkpoint_interval_seconds,
-        logger=logger,
-    )
-    lifecycle_worker = lifecycle_replay_worker or LifecycleReplayWorker(
-        settings,
-        event_sender,
-        replay=replay_pending_events,
-        logger=logger,
-    )
+    indicator = indicator_worker or create_indicator_worker(settings, logger=logger)
+    indicator.start()
+    repository_to_close: SpoolRepository | None = repository
+    try:
+        mqtt_sender = MqttSender(settings, logger=logger)
+        http_sender = HttpSender(settings, logger=logger)
+        event_sender = MqttEventSender(settings, logger=logger)
+        photo_sender = photo_sender or HttpPhotoSender(settings, logger=logger)
+        repository = repository or _open_spool(settings, logger)
+        repository_to_close = repository
+        repository.import_legacy(settings.local_storage_dir)
+        repository.cleanup_delivered(settings.telemetry_spool_delivered_retention_days)
+        worker = delivery_worker or DeliveryWorker(
+            repository,
+            http_sender,
+            mqtt_sender,
+            batch_size=settings.telemetry_spool_batch_size,
+            rate_limit_per_second=settings.telemetry_spool_rate_limit_per_second,
+            checkpoint_interval_seconds=settings.telemetry_spool_checkpoint_interval_seconds,
+            logger=logger,
+        )
+        lifecycle_worker = lifecycle_replay_worker or LifecycleReplayWorker(
+            settings,
+            event_sender,
+            replay=replay_pending_events,
+            logger=logger,
+        )
+    except BaseException:
+        if repository_to_close is not None:
+            _best_effort_cleanup(repository_to_close.close, "telemetry spool", logger)
+        _best_effort_cleanup(indicator.stop, "health indicator", logger)
+        raise
     phase_token = _PHASE_REPORTER.set(heartbeat.write)
     worker_started = False
     lifecycle_worker_started = False
@@ -193,6 +209,12 @@ def run(
             repository.relieve_disk_pressure(settings.telemetry_spool_delivered_retention_days)
             preflight_health = repository.health()
             if str(preflight_health.get("disk_status", "OK")) in {"DEGRADED", "CRITICAL"}:
+                suspended_health = aggregate_edge_health(
+                    {"spool": preflight_health},
+                    remote_delivery_configured=settings.http_enabled,
+                    acquisition_active=False,
+                )
+                indicator.update(suspended_health.state)
                 heartbeat.write("storage_degraded", disk_status=preflight_health.get("disk_status"))
                 if not storage_exhausted:
                     logger.critical(
@@ -209,7 +231,16 @@ def run(
                 if last_spool_status is not None and current_status != last_spool_status:
                     logger.warning("Telemetry spool state changed: %s -> %s", last_spool_status, current_status)
                 last_spool_status = current_status
-                readings.setdefault("system_health", {})["spool"] = spool_health
+                system_health = readings.setdefault("system_health", {})
+                system_health["spool"] = spool_health
+                aggregate = aggregate_edge_health(
+                    system_health,
+                    remote_delivery_configured=settings.http_enabled,
+                    acquisition_active=True,
+                )
+                indicator.update(aggregate.state)
+                system_health["aggregate"] = aggregate.as_dict()
+                system_health["indicator"] = indicator.snapshot()
                 heartbeat.write("formatting")
                 pending_payload = format_payload(settings, readings)
             try:
@@ -261,16 +292,21 @@ def run(
         finally:
             try:
                 if worker_started:
-                    worker.stop()
+                    _best_effort_cleanup(worker.stop, "telemetry delivery worker", logger)
+                if lifecycle_worker_started:
+                    _best_effort_cleanup(lifecycle_worker.stop, "lifecycle replay worker", logger)
+                _best_effort_cleanup(repository.close, "telemetry spool", logger)
+                _best_effort_cleanup(indicator.stop, "health indicator", logger)
             finally:
-                try:
-                    if lifecycle_worker_started:
-                        lifecycle_worker.stop()
-                finally:
-                    try:
-                        repository.close()
-                    finally:
-                        _PHASE_REPORTER.reset(phase_token)
+                _PHASE_REPORTER.reset(phase_token)
+
+
+def _best_effort_cleanup(cleanup: Callable[[], Any], name: str, logger: Any) -> None:
+    """Run one shutdown action without preventing the remaining cleanup."""
+    try:
+        cleanup()
+    except Exception as exc:  # noqa: BLE001 - cleanup failures are diagnostic, not fatal
+        logger.error("Failed to stop %s cleanly: %s", name, exc)
 
 
 def _open_spool(settings: Settings, logger: Any) -> SpoolRepository:

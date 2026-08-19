@@ -44,6 +44,17 @@ def test_setup_requires_explicit_watchdog_install_flag() -> None:
     assert "systemctl enable senior-pomidor-edge.service senior-pomidor-watchdog.service" in setup
 
 
+def test_setup_prepares_operator_owned_maintenance_directory_before_enabling_services() -> None:
+    setup = (ROOT / "scripts/setup_raspberry_pi.sh").read_text(encoding="utf-8")
+    prepare = setup.index('install -d -o "$TARGET_USER" -g "$target_group" -m 0750 "${repo_dir}/data/watchdog"')
+    enable = setup.index("systemctl enable senior-pomidor-edge.service senior-pomidor-watchdog.service")
+    marker = setup.index('"${repo_dir}/data/watchdog/installed"')
+
+    assert 'target_group="$(id -gn "$TARGET_USER")"' in setup
+    assert prepare < enable
+    assert prepare < marker < enable
+
+
 def test_watchdog_cli_reports_invalid_configuration_without_traceback(monkeypatch, caplog) -> None:
     def invalid_config():
         raise ValueError("WATCHDOG_TIMEOUT_SECONDS must be greater than POLL_INTERVAL_SECONDS")

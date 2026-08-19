@@ -272,9 +272,13 @@ install_edge_watchdog() {
     die "--install-watchdog requires Raspberry Pi hardware"
   fi
 
-  local repo_dir
+  local repo_dir target_group
   repo_dir="$(pwd)"
+  target_group="$(id -gn "$TARGET_USER")"
   log "Installing edge service and layered host watchdog"
+  # The documented maintenance command runs as the invoking operator. Prepare
+  # its marker directory before root-run services can create it as root.
+  "${SUDO[@]}" install -d -o "$TARGET_USER" -g "$target_group" -m 0750 "${repo_dir}/data/watchdog"
   chmod +x scripts/edge_watchdog.py
   sed "s|/opt/senior-pomidor-plant-v2|${repo_dir}|g" deploy/systemd/senior-pomidor-edge.service \
     | "${SUDO[@]}" tee /etc/systemd/system/senior-pomidor-edge.service >/dev/null
@@ -293,6 +297,9 @@ EOF
 
   "${SUDO[@]}" systemctl daemon-reexec
   "${SUDO[@]}" systemctl daemon-reload
+  # Record installation intent independently of the supervisor's first poll.
+  "${SUDO[@]}" install -o "$TARGET_USER" -g "$target_group" -m 0644 /dev/null \
+    "${repo_dir}/data/watchdog/installed"
   "${SUDO[@]}" systemctl enable senior-pomidor-edge.service senior-pomidor-watchdog.service
   if [ "$SKIP_START" != "true" ]; then
     "${SUDO[@]}" systemctl restart senior-pomidor-edge.service

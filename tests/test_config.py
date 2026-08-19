@@ -97,6 +97,76 @@ def test_config_parses_health_defaults() -> None:
     assert settings.network_recovery_status_file == "data/network-recovery/status.json"
     assert settings.disk_usage_path == "/"
     assert settings.service_name is None
+    assert settings.indicator_enabled is False
+    assert settings.indicator_backend == "auto"
+    assert (settings.indicator_red_pin, settings.indicator_yellow_pin, settings.indicator_green_pin) == (17, 27, 22)
+    assert (settings.indicator_startup_hz, settings.indicator_backlog_hz, settings.indicator_critical_hz) == (
+        0.5,
+        1.0,
+        2.0,
+    )
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("INDICATOR_BACKEND", "invalid"),
+        ("INDICATOR_RED_PIN", "28"),
+        ("INDICATOR_STARTUP_HZ", "0"),
+        ("INDICATOR_BACKLOG_HZ", "nan"),
+        ("INDICATOR_CRITICAL_HZ", "inf"),
+    ],
+)
+def test_config_rejects_invalid_indicator_settings(key, value) -> None:
+    with pytest.raises(ConfigError, match=key):
+        load_config(
+            {
+                "MQTT_HOST": "core.local",
+                "HTTP_ENABLED": "true",
+                "CORE_HTTP_URL": "https://core.example/telemetry",
+                key: value,
+            }
+        )
+
+
+def test_config_rejects_duplicate_indicator_pins() -> None:
+    with pytest.raises(ConfigError, match="must be unique"):
+        load_config(
+            {
+                "MQTT_HOST": "core.local",
+                "HTTP_ENABLED": "true",
+                "CORE_HTTP_URL": "https://core.example/telemetry",
+                "INDICATOR_RED_PIN": "17",
+                "INDICATOR_GREEN_PIN": "17",
+            }
+        )
+
+
+def test_config_parses_indicator_settings() -> None:
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "INDICATOR_ENABLED": "true",
+            "INDICATOR_BACKEND": "mock",
+            "INDICATOR_RED_PIN": "5",
+            "INDICATOR_YELLOW_PIN": "6",
+            "INDICATOR_GREEN_PIN": "13",
+            "INDICATOR_STARTUP_HZ": "0.25",
+            "INDICATOR_BACKLOG_HZ": "1.5",
+            "INDICATOR_CRITICAL_HZ": "4",
+        }
+    )
+
+    assert settings.indicator_enabled is True
+    assert settings.indicator_backend == "mock"
+    assert (settings.indicator_red_pin, settings.indicator_yellow_pin, settings.indicator_green_pin) == (5, 6, 13)
+    assert (settings.indicator_startup_hz, settings.indicator_backlog_hz, settings.indicator_critical_hz) == (
+        0.25,
+        1.5,
+        4.0,
+    )
 
 
 def test_config_parses_health_settings() -> None:

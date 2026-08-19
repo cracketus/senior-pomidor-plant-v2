@@ -62,6 +62,8 @@
             "type": ["string", "number", "integer", "boolean", "null"]
           }
         },
+        "aggregate": { "$ref": "#/$defs/edgeHealth" },
+        "indicator": { "$ref": "#/$defs/indicatorHealth" },
         "errors": {
           "type": "array",
           "items": { "$ref": "#/$defs/error" }
@@ -91,6 +93,36 @@
         }
       },
       "additionalProperties": true
+    },
+    "edgeHealth": {
+      "type": "object",
+      "required": ["schema_version", "state", "reasons"],
+      "properties": {
+        "schema_version": { "const": "senior-pomidor.edge.health.v1" },
+        "state": { "enum": ["STARTUP", "OK", "BACKLOG", "DEGRADED", "MAINTENANCE", "CRITICAL"] },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "indicatorHealth": {
+      "type": "object",
+      "required": ["enabled", "backend", "requested_state", "last_rendered_state", "operational", "last_error"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "backend": { "enum": ["mock", "gpio"] },
+        "requested_state": { "enum": ["STARTUP", "OK", "BACKLOG", "DEGRADED", "MAINTENANCE", "CRITICAL"] },
+        "last_rendered_state": {
+          "type": ["string", "null"],
+          "enum": [null, "STARTUP", "OK", "BACKLOG", "DEGRADED", "MAINTENANCE", "CRITICAL"]
+        },
+        "operational": { "type": "boolean" },
+        "last_error": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
     },
     "error": {
       "type": "object",

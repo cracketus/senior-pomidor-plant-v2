@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import math
 import os
 import platform as platform_module
 import re
@@ -76,6 +77,14 @@ class Settings:
     network_recovery_status_file: str
     disk_usage_path: str
     service_name: str | None
+    indicator_enabled: bool
+    indicator_backend: str
+    indicator_red_pin: int
+    indicator_yellow_pin: int
+    indicator_green_pin: int
+    indicator_startup_hz: float
+    indicator_backlog_hz: float
+    indicator_critical_hz: float
     ads1115_pod1_channel: str
     ads1115_pod2_channel: str
     ads1115_pod1_dry_reading: float
@@ -190,6 +199,14 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
         network_recovery_status_file=_string(env, "NETWORK_RECOVERY_STATUS_FILE", "data/network-recovery/status.json"),
         disk_usage_path=_string(env, "DISK_USAGE_PATH", "/"),
         service_name=_optional(env, "SERVICE_NAME"),
+        indicator_enabled=_bool(env, "INDICATOR_ENABLED", False),
+        indicator_backend=_choice(env, "INDICATOR_BACKEND", "auto", {"auto", "mock", "gpio"}),
+        indicator_red_pin=_int(env, "INDICATOR_RED_PIN", 17, minimum=0, maximum=27),
+        indicator_yellow_pin=_int(env, "INDICATOR_YELLOW_PIN", 27, minimum=0, maximum=27),
+        indicator_green_pin=_int(env, "INDICATOR_GREEN_PIN", 22, minimum=0, maximum=27),
+        indicator_startup_hz=_positive_finite_float(env, "INDICATOR_STARTUP_HZ", 0.5),
+        indicator_backlog_hz=_positive_finite_float(env, "INDICATOR_BACKLOG_HZ", 1.0),
+        indicator_critical_hz=_positive_finite_float(env, "INDICATOR_CRITICAL_HZ", 2.0),
         ads1115_pod1_channel=_channel(env, "ADS1115_POD1_CHANNEL", "A0"),
         ads1115_pod2_channel=_channel(env, "ADS1115_POD2_CHANNEL", "A1"),
         ads1115_pod1_dry_reading=_float_alias(env, "ADS1115_POD1_DRY_READING", "ADS1115_POD1_DRY_VOLTAGE", 17736.0),
@@ -220,6 +237,9 @@ def load_config(env: Mapping[str, str] | None = None, platform_name: str | None 
         raise ConfigError("At least one pod must be enabled")
     if settings.watchdog_timeout_seconds <= settings.poll_interval_seconds:
         raise ConfigError("WATCHDOG_TIMEOUT_SECONDS must be greater than POLL_INTERVAL_SECONDS")
+    indicator_pins = (settings.indicator_red_pin, settings.indicator_yellow_pin, settings.indicator_green_pin)
+    if len(set(indicator_pins)) != len(indicator_pins):
+        raise ConfigError("INDICATOR_RED_PIN, INDICATOR_YELLOW_PIN, and INDICATOR_GREEN_PIN must be unique")
     _validate_calibration("ADS1115_POD1", settings.ads1115_pod1_dry_reading, settings.ads1115_pod1_wet_reading)
     _validate_calibration("ADS1115_POD2", settings.ads1115_pod2_dry_reading, settings.ads1115_pod2_wet_reading)
     if not (
@@ -274,6 +294,14 @@ def public_settings(settings: Settings) -> dict[str, object]:
         "wifi_interface": settings.wifi_interface,
         "disk_usage_path": settings.disk_usage_path,
         "service_name": settings.service_name,
+        "indicator_enabled": settings.indicator_enabled,
+        "indicator_backend": settings.indicator_backend,
+        "indicator_red_pin": settings.indicator_red_pin,
+        "indicator_yellow_pin": settings.indicator_yellow_pin,
+        "indicator_green_pin": settings.indicator_green_pin,
+        "indicator_startup_hz": settings.indicator_startup_hz,
+        "indicator_backlog_hz": settings.indicator_backlog_hz,
+        "indicator_critical_hz": settings.indicator_critical_hz,
         "watchdog_heartbeat_file": settings.watchdog_heartbeat_file,
         "watchdog_status_file": settings.watchdog_status_file,
         "watchdog_maintenance_file": settings.watchdog_maintenance_file,
@@ -364,6 +392,20 @@ def _float(
         raise ConfigError(f"{key} must be >= {minimum}")
     if maximum is not None and value > maximum:
         raise ConfigError(f"{key} must be <= {maximum}")
+    return value
+
+
+def _positive_finite_float(env: Mapping[str, str], key: str, default: float) -> float:
+    value = _float(env, key, default)
+    if not math.isfinite(value) or value <= 0:
+        raise ConfigError(f"{key} must be a positive finite number")
+    return value
+
+
+def _choice(env: Mapping[str, str], key: str, default: str, choices: set[str]) -> str:
+    value = _string(env, key, default).lower()
+    if value not in choices:
+        raise ConfigError(f"{key} must be one of {', '.join(sorted(choices))}")
     return value
 
 
