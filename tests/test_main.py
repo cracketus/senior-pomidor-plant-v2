@@ -89,6 +89,9 @@ def test_run_includes_health_payload(monkeypatch) -> None:
     assert stored["system_health"]["pod_1_hardware"]["bus_current_ma"] == 12.4
     assert stored["system_health"]["spool"]["status"] == "OK"
     assert stored["system_health"]["watchdog"]["state"] in {"unavailable", "starting", "healthy"}
+    assert stored["system_health"]["aggregate"]["schema_version"] == "senior-pomidor.edge.health.v1"
+    assert stored["system_health"]["aggregate"]["state"] == "OK"
+    assert stored["system_health"]["indicator"]["requested_state"] == stored["system_health"]["aggregate"]["state"]
     assert repository.events.index("start") < repository.events.index("enqueue")
     assert repository.events.index("enqueue") < repository.events.index("lifecycle_notify")
     assert repository.events.index("enqueue") < repository.events.index("notify")
@@ -107,6 +110,7 @@ def test_run_publishes_startup_heartbeat_before_spool_initialization(monkeypatch
     worker = FakeWorker(events)
     lifecycle_worker = FakeLifecycleWorker(events)
     heartbeat = RecordingHeartbeat(events)
+    indicator = FakeIndicator(events)
 
     def open_spool(_settings, _logger):
         events.append("open_spool")
@@ -120,10 +124,12 @@ def test_run_publishes_startup_heartbeat_before_spool_initialization(monkeypatch
         delivery_worker=worker,
         lifecycle_replay_worker=lifecycle_worker,
         heartbeat_writer=heartbeat,
+        indicator_worker=indicator,
         sleep=lambda _seconds: None,
     )
 
     assert events.index("heartbeat:startup") < events.index("open_spool")
+    assert events.index("indicator_start") < events.index("open_spool")
     assert events.index("heartbeat:startup") < events.index("import_legacy")
     assert events.index("heartbeat:startup") < events.index("cleanup_delivered")
 
@@ -262,6 +268,7 @@ def test_run_suspends_sampling_and_camera_on_degraded_spool_disk(monkeypatch) ->
     worker = FakeWorker(repository.events)
     collected = []
     captured = []
+    indicator = FakeIndicator(repository.events)
 
     monkeypatch.setattr("src.main.collect_readings", lambda _settings: collected.append(True))
 
@@ -275,12 +282,14 @@ def test_run_suspends_sampling_and_camera_on_degraded_spool_disk(monkeypatch) ->
             sleep=stop_loop,
             repository=repository,
             delivery_worker=worker,
+            indicator_worker=indicator,
         )
 
     assert collected == []
     assert captured == []
     assert repository.payloads == []
-    assert repository.events == ["start", "stop", "close"]
+    assert "indicator:DEGRADED" in repository.events
+    assert repository.events[-3:] == ["stop", "close", "indicator_stop"]
 
 
 def test_run_starts_delivery_but_not_event_replay_before_fresh_persist_succeeds(monkeypatch) -> None:
@@ -331,6 +340,46 @@ def test_run_stops_worker_before_closing_repository_when_final_heartbeat_fails(m
     assert "Final watchdog heartbeat write failed" in caplog.text
 
 
+def test_run_cleanup_failures_do_not_skip_remaining_resources(monkeypatch, caplog) -> None:
+    settings = _load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "MOCK_SENSORS": "true",
+            "MAX_TICKS": "1",
+        }
+    )
+    events: list[str] = []
+    repository = CleanupFailingRepository(events)
+    worker = CleanupFailingWorker(events)
+    lifecycle_worker = FakeLifecycleWorker(events)
+    indicator = FakeIndicator(events)
+    monkeypatch.setattr("src.main.collect_readings", lambda _settings: {"pod_1": {}, "pod_2": {}, "shared": {}})
+
+    run(
+        settings,
+        repository=repository,
+        delivery_worker=worker,
+        lifecycle_replay_worker=lifecycle_worker,
+        indicator_worker=indicator,
+        sleep=lambda _seconds: None,
+    )
+
+    assert events[-4:] == ["stop_failed", "lifecycle_stop", "close", "indicator_stop"]
+    assert "Failed to stop telemetry delivery worker cleanly" in caplog.text
+
+
+def test_run_closes_repository_and_indicator_when_initialization_fails(monkeypatch) -> None:
+    settings = _load_config({"MQTT_HOST": "core.local", "MOCK_SENSORS": "true"})
+    events: list[str] = []
+    repository = ImportFailingRepository(events)
+    indicator = FakeIndicator(events)
+
+    with pytest.raises(OSError, match="legacy import failed"):
+        run(settings, repository=repository, indicator_worker=indicator)
+
+    assert events == ["indicator_start", "import_failed", "close", "indicator_stop"]
+
+
 class FakePhotoSender:
     def __init__(self, events=None) -> None:
         self.upload_calls = 0
@@ -352,7 +401,7 @@ class FakeRepository:
         return 0, []
 
     def health(self):
-        return {"status": "OK", "pending_count": 0, "in_flight_count": 0}
+        return {"status": "OK", "disk_status": "OK", "pending_count": 0, "in_flight_count": 0}
 
     def enqueue(self, payload):
         self.events.append("enqueue")
@@ -394,6 +443,32 @@ class FakeLifecycleWorker:
 
     def stop(self):
         self.events.append("lifecycle_stop")
+
+
+class FakeIndicator:
+    def __init__(self, events) -> None:
+        self.events = events
+        self.requested_state = "STARTUP"
+
+    def start(self):
+        self.events.append("indicator_start")
+
+    def update(self, state):
+        self.requested_state = state.value
+        self.events.append(f"indicator:{state.value}")
+
+    def snapshot(self):
+        return {
+            "enabled": True,
+            "backend": "mock",
+            "requested_state": self.requested_state,
+            "last_rendered_state": self.requested_state,
+            "operational": True,
+            "last_error": None,
+        }
+
+    def stop(self):
+        self.events.append("indicator_stop")
 
 
 class FailingShutdownHeartbeat:
@@ -442,6 +517,24 @@ class FailingRepository(FakeRepository):
 
     def increment_counter(self, _name):
         return 1
+
+
+class CleanupFailingRepository(FakeRepository):
+    def __init__(self, events) -> None:
+        self.payloads = []
+        self.events = events
+
+
+class ImportFailingRepository(CleanupFailingRepository):
+    def import_legacy(self, _directory):
+        self.events.append("import_failed")
+        raise OSError("legacy import failed")
+
+
+class CleanupFailingWorker(FakeWorker):
+    def stop(self):
+        self.events.append("stop_failed")
+        raise OSError("worker stop failed")
 
 
 class StopLoop(Exception):

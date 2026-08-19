@@ -3,16 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 
-
-class EdgeHealthState(StrEnum):
-    OK = "OK"
-    BACKLOG = "BACKLOG"
-    DEGRADED = "DEGRADED"
-    MAINTENANCE = "MAINTENANCE"
-    CRITICAL = "CRITICAL"
-    STARTUP = "STARTUP"
+from src.edge_health import EdgeHealthState
 
 
 @dataclass(frozen=True)

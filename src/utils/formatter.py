@@ -87,6 +87,10 @@ def _format_system_health(readings: Any) -> dict[str, Any]:
     if "watchdog" in readings:
         result["watchdog"] = {}
         _merge_health_metrics(readings.get("watchdog"), result["watchdog"], errors)
+    for key in ("aggregate", "indicator"):
+        value = readings.get(key)
+        if isinstance(value, dict):
+            result[key] = value.copy()
 
     pod_1_hardware = readings.get("pod_1_hardware", {})
     if isinstance(pod_1_hardware, dict):

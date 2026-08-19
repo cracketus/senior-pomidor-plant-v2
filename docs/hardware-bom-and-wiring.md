@@ -16,6 +16,7 @@ This guide summarizes the expected Raspberry Pi hardware for the alpha edge-node
 | INA219 | Pod 1 bus voltage and current health |
 | USB camera | Plant photos |
 | 4.7 kOhm resistor | DS18B20 1-Wire pull-up |
+| Three-LED indicator plus one series resistor per LED | Local edge-health display; optional and disabled by default |
 
 ## Shared I2C Bus
 
@@ -61,3 +62,7 @@ fswebcam --device /dev/video0 --resolution 1920x1080 --jpeg 95 --no-banner --ski
 ## Calibration
 
 Soil moisture calibration values are raw ADS1115 readings from `AnalogIn.value`, not volts. Follow [hardware-calibration-spec.md](hardware-calibration-spec.md) before relying on real moisture percentages.
+
+## Optional health indicator
+
+The reference indicator uses BCM GPIO 17 (red), 27 (yellow), and 22 (green). Do not enable it from configuration until the board has been electrically isolated from its original controller and the series resistors and common ground have been verified. Follow [edge-health-indicator.md](edge-health-indicator.md) for wiring and maintenance-window validation. Buzzer and SW1 support are not implemented.

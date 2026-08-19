@@ -38,6 +38,10 @@
       "cpu_temp_c": 56.4,
       "wifi_rssi_dbm": -68.0,
       "filesystem_read_only": false,
+      "recent_io_error_count": 0,
+      "under_voltage_now": false,
+      "frequency_capped_now": false,
+      "throttled_now": false,
       "telemetry_buffer_file_count": 7,
       "disk_free_bytes": 123456
     },
@@ -62,6 +66,31 @@
       "restart_count": 1,
       "reboot_count": 0,
       "last_healthy_heartbeat_at_utc": "2026-06-06T10:00:01Z"
+    },
+    "application": {
+      "process_running": true,
+      "systemd_service_name": "senior-pomidor-edge",
+      "systemd_available": true,
+      "systemd_service_active": true
+    },
+    "spool": {
+      "status": "OK",
+      "disk_status": "OK",
+      "pending_count": 0,
+      "backlog_count": 0
+    },
+    "aggregate": {
+      "schema_version": "senior-pomidor.edge.health.v1",
+      "state": "OK",
+      "reasons": []
+    },
+    "indicator": {
+      "enabled": false,
+      "backend": "mock",
+      "requested_state": "OK",
+      "last_rendered_state": null,
+      "operational": false,
+      "last_error": null
     },
     "pod_1_hardware": {
       "bus_voltage_v": 3.25,

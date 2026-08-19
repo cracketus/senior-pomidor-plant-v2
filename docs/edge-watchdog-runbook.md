@@ -6,7 +6,7 @@ The collector publishes its startup identity before opening or recovering the te
 
 Recovery is deliberately bounded. The supervisor restarts `senior-pomidor-edge.service` first and only declares recovery after a newer persisted heartbeat appears. It permits three restarts per 30 minutes with a five-minute cooldown. After that, one controlled reboot per hour is possible only when `WATCHDOG_ALLOW_REBOOT=true`. Otherwise it enters persistent suppression. Pending SQLite telemetry and queued lifecycle events are never deleted by recovery; replay starts only after the recovered collector persists its first fresh sample.
 
-Planned maintenance must begin with `python scripts/maintenance_event.py start --reason "..."`. The command creates the persistent `WATCHDOG_MAINTENANCE_FILE` marker before publishing the lifecycle event. While that marker is active, the supervisor reports `maintenance`, performs no recovery action, and consumes no restart or reboot budget. After the service is healthy again, run `python scripts/maintenance_event.py complete --reason "..."` to remove the marker and publish completion. A malformed marker does not disable recovery, and a marker-write failure returns exit code `2` so operators do not mistake an unsafe shutdown for a protected one.
+Planned maintenance must begin with `python scripts/maintenance_event.py start --reason "..."`. When the host watchdog is installed, the command creates the persistent `WATCHDOG_MAINTENANCE_FILE` marker before publishing the lifecycle event. While that marker is active, the supervisor reports `maintenance`, performs no recovery action, and consumes no restart or reboot budget. Without an installed host watchdog, the hold is unnecessary and the command continues to emit the lifecycle event. After the service is healthy again, run `python scripts/maintenance_event.py complete --reason "..."` to remove the marker and publish completion. A malformed marker does not disable recovery, and a required marker-write failure returns exit code `2` so operators do not mistake an unsafe shutdown for a protected one.
 
 ## Installation
 
@@ -17,6 +17,8 @@ Host actions and Raspberry Pi OS runtime hardware watchdog support are explicit 
 ```
 
 Normal setup and mock Compose runs only produce heartbeat data; they never install a host supervisor or perform restart/reboot actions. Controlled reboot remains off unless explicitly enabled in `.env`.
+
+Installation creates `data/watchdog/installed` before enabling the services. This marker records supervisor intent independently of `status.json`, so a supervisor that fails before its first poll is reported as configured but unavailable.
 
 ## Disable and manual recovery
 

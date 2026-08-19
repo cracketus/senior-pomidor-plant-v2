@@ -8,9 +8,10 @@ def test_maintenance_event_script_emits_start(monkeypatch) -> None:
     captured = {}
     operations = []
 
-    settings = SimpleNamespace(watchdog_maintenance_file="maintenance.json")
+    settings = SimpleNamespace(watchdog_maintenance_file="maintenance.json", watchdog_status_file="status.json")
     monkeypatch.setattr(maintenance_event, "load_config", lambda: settings)
     monkeypatch.setattr(maintenance_event, "configure_logger", NullLogger)
+    monkeypatch.setattr(maintenance_event, "watchdog_is_configured", lambda _path: True)
     monkeypatch.setattr(
         maintenance_event,
         "set_maintenance_hold",
@@ -39,9 +40,10 @@ def test_maintenance_event_script_emits_complete(monkeypatch) -> None:
     captured = {}
     operations = []
 
-    settings = SimpleNamespace(watchdog_maintenance_file="maintenance.json")
+    settings = SimpleNamespace(watchdog_maintenance_file="maintenance.json", watchdog_status_file="status.json")
     monkeypatch.setattr(maintenance_event, "load_config", lambda: settings)
     monkeypatch.setattr(maintenance_event, "configure_logger", NullLogger)
+    monkeypatch.setattr(maintenance_event, "watchdog_is_configured", lambda _path: True)
     monkeypatch.setattr(
         maintenance_event,
         "set_maintenance_hold",
@@ -67,7 +69,7 @@ def test_maintenance_event_script_emits_complete(monkeypatch) -> None:
 
 
 def test_maintenance_event_script_returns_one_when_event_is_queued(monkeypatch) -> None:
-    settings = SimpleNamespace(watchdog_maintenance_file="maintenance.json")
+    settings = SimpleNamespace(watchdog_maintenance_file="maintenance.json", watchdog_status_file="status.json")
     monkeypatch.setattr(maintenance_event, "load_config", lambda: settings)
     monkeypatch.setattr(maintenance_event, "configure_logger", NullLogger)
     monkeypatch.setattr(maintenance_event, "set_maintenance_hold", lambda *_args, **_kwargs: None)
@@ -77,10 +79,11 @@ def test_maintenance_event_script_returns_one_when_event_is_queued(monkeypatch) 
 
 
 def test_maintenance_event_script_refuses_transition_when_hold_write_fails(monkeypatch) -> None:
-    settings = SimpleNamespace(watchdog_maintenance_file="maintenance.json")
+    settings = SimpleNamespace(watchdog_maintenance_file="maintenance.json", watchdog_status_file="status.json")
     emitted = []
     monkeypatch.setattr(maintenance_event, "load_config", lambda: settings)
     monkeypatch.setattr(maintenance_event, "configure_logger", NullLogger)
+    monkeypatch.setattr(maintenance_event, "watchdog_is_configured", lambda _path: True)
     monkeypatch.setattr(
         maintenance_event,
         "set_maintenance_hold",
@@ -93,10 +96,11 @@ def test_maintenance_event_script_refuses_transition_when_hold_write_fails(monke
 
 
 def test_maintenance_event_script_contains_unexpected_event_failure(monkeypatch) -> None:
-    settings = SimpleNamespace(watchdog_maintenance_file="maintenance.json")
+    settings = SimpleNamespace(watchdog_maintenance_file="maintenance.json", watchdog_status_file="status.json")
     holds = []
     monkeypatch.setattr(maintenance_event, "load_config", lambda: settings)
     monkeypatch.setattr(maintenance_event, "configure_logger", NullLogger)
+    monkeypatch.setattr(maintenance_event, "watchdog_is_configured", lambda _path: True)
     monkeypatch.setattr(
         maintenance_event,
         "set_maintenance_hold",
@@ -110,6 +114,27 @@ def test_maintenance_event_script_contains_unexpected_event_failure(monkeypatch)
 
     assert maintenance_event.main(["start", "--reason", "sensor service"]) == 2
     assert holds == [("maintenance.json", True, "sensor service")]
+
+
+def test_maintenance_event_without_installed_watchdog_skips_hold_and_emits(monkeypatch) -> None:
+    settings = SimpleNamespace(watchdog_maintenance_file="maintenance.json", watchdog_status_file="status.json")
+    operations = []
+    monkeypatch.setattr(maintenance_event, "load_config", lambda: settings)
+    monkeypatch.setattr(maintenance_event, "configure_logger", NullLogger)
+    monkeypatch.setattr(maintenance_event, "watchdog_is_configured", lambda _path: False)
+    monkeypatch.setattr(
+        maintenance_event,
+        "set_maintenance_hold",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("hold must be skipped")),
+    )
+    monkeypatch.setattr(
+        maintenance_event,
+        "emit_lifecycle_event",
+        lambda _settings, event_type, **_kwargs: operations.append(event_type) or True,
+    )
+
+    assert maintenance_event.main(["start"]) == 0
+    assert operations == [MAINTENANCE_STARTED]
 
 
 class NullLogger:

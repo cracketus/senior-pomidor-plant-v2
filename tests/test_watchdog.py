@@ -8,14 +8,84 @@ import pytest
 
 from src.telemetry_spool import SpoolRepository
 from src.watchdog import (
+    WATCHDOG_INSTALLATION_MARKER,
     HeartbeatWriter,
     HostWatchdog,
     WatchdogConfig,
     atomic_write_json,
     read_json,
+    read_watchdog_health,
     set_maintenance_hold,
     utc_text,
 )
+
+
+def test_watchdog_health_distinguishes_unconfigured_from_stale_status(tmp_path) -> None:
+    clock = Clock(datetime(2026, 8, 19, 12, 0, tzinfo=UTC))
+    status_path = tmp_path / "status.json"
+
+    assert read_watchdog_health(status_path, max_age_seconds=30, now=clock) == {
+        "state": "unavailable",
+        "suppression": False,
+        "configured": False,
+    }
+
+    (status_path.parent / WATCHDOG_INSTALLATION_MARKER).touch()
+    assert read_watchdog_health(status_path, max_age_seconds=30, now=clock) == {
+        "state": "unavailable",
+        "suppression": False,
+        "configured": True,
+    }
+
+    (status_path.parent / WATCHDOG_INSTALLATION_MARKER).unlink()
+    atomic_write_json(
+        status_path,
+        {
+            "watchdog_state": "healthy",
+            "updated_at_utc": utc_text(clock() - timedelta(seconds=31)),
+            "suppression": True,
+        },
+    )
+
+    assert read_watchdog_health(status_path, max_age_seconds=30, now=clock) == {
+        "state": "unavailable",
+        "reason": "status_stale",
+        "suppression": False,
+        "configured": True,
+    }
+
+
+@pytest.mark.parametrize("timestamp", [None, "invalid", "2026-08-19T12:00:01Z"])
+def test_watchdog_health_rejects_invalid_or_future_status_timestamps(tmp_path, timestamp) -> None:
+    clock = Clock(datetime(2026, 8, 19, 12, 0, tzinfo=UTC))
+    status_path = tmp_path / "status.json"
+    atomic_write_json(status_path, {"watchdog_state": "healthy", "updated_at_utc": timestamp})
+
+    result = read_watchdog_health(status_path, max_age_seconds=30, now=clock)
+
+    assert result["state"] == "unavailable"
+    assert result["reason"] == "status_timestamp_invalid"
+    assert result["configured"] is True
+
+
+def test_watchdog_health_contains_malformed_counters(tmp_path) -> None:
+    clock = Clock(datetime(2026, 8, 19, 12, 0, tzinfo=UTC))
+    status_path = tmp_path / "status.json"
+    atomic_write_json(
+        status_path,
+        {
+            "watchdog_state": "healthy",
+            "updated_at_utc": utc_text(clock()),
+            "attempt_count": "not-an-integer",
+            "restart_count": None,
+            "reboot_count": -1,
+        },
+    )
+
+    result = read_watchdog_health(status_path, max_age_seconds=30, now=clock)
+
+    assert result["state"] == "healthy"
+    assert (result["attempt_count"], result["restart_count"], result["reboot_count"]) == (0, 0, 0)
 
 
 class Clock:
@@ -147,6 +217,41 @@ def test_stale_storage_suspension_heartbeat_still_triggers_recovery(tmp_path) ->
     assert watchdog.poll() == "restart"
     assert actions == ["restart"]
     assert watchdog.state.reason == "heartbeat_stale:storage_degraded"
+
+
+@pytest.mark.parametrize(
+    ("updated_offset", "persisted_offset", "expected_reason"),
+    [
+        (1, 0, "heartbeat_timestamp_in_future"),
+        (0, 1, "persisted_sample_timestamp_in_future"),
+    ],
+)
+def test_future_heartbeat_timestamps_trigger_recovery_and_do_not_grant_grace(
+    tmp_path,
+    updated_offset,
+    persisted_offset,
+    expected_reason,
+) -> None:
+    clock = Clock(datetime(2026, 8, 17, 10, 10, tzinfo=UTC))
+    cfg = config(tmp_path)
+    heartbeat(
+        cfg.heartbeat_file,
+        clock() + timedelta(seconds=updated_offset),
+        persisted=clock() + timedelta(seconds=persisted_offset),
+    )
+    actions = []
+    watchdog = HostWatchdog(
+        cfg,
+        action=lambda action: actions.append(action) or True,
+        now=clock,
+        current_boot_id="host-a",
+    )
+
+    assert watchdog.poll() == "restart"
+    assert actions == ["restart"]
+    assert watchdog.state.reason == expected_reason
+    assert watchdog.state.collector_boot_id is None
+    assert watchdog.state.collector_process_id is None
 
 
 def test_storage_suspension_does_not_clear_existing_suppression(tmp_path) -> None:

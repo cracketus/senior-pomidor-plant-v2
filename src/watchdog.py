@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+WATCHDOG_INSTALLATION_MARKER = "installed"
 
 
 def utc_now() -> datetime:
@@ -301,8 +302,12 @@ class HostWatchdog:
         persisted = parse_utc(heartbeat.get("last_persisted_at_utc"))
         if updated is None:
             return False, "heartbeat_timestamp_invalid"
+        if updated > now:
+            return False, "heartbeat_timestamp_in_future"
         if now - updated > timedelta(seconds=self.config.timeout_seconds):
             return False, f"heartbeat_stale:{heartbeat.get('phase', 'unknown')}"
+        if persisted is not None and persisted > now:
+            return False, "persisted_sample_timestamp_in_future"
         if heartbeat.get("phase") == "storage_degraded" and heartbeat.get("disk_status") in {
             "DEGRADED",
             "CRITICAL",
@@ -386,11 +391,14 @@ class HostWatchdog:
         if heartbeat is None:
             return
         updated = parse_utc(heartbeat.get("updated_at_utc"))
+        persisted = parse_utc(heartbeat.get("last_persisted_at_utc"))
         collector_boot_id = heartbeat.get("boot_id")
         collector_process_id = heartbeat.get("process_id")
         collector_instance_id = heartbeat.get("instance_id")
         if (
             updated is None
+            or updated > now
+            or (persisted is not None and persisted > now)
             or now - updated > timedelta(seconds=self.config.timeout_seconds)
             or not isinstance(collector_boot_id, str)
             or collector_boot_id != self.boot_id
@@ -482,21 +490,64 @@ class HostWatchdog:
             logger.error("Watchdog lifecycle event persistence failed for %s: %s", event_type, exc)
 
 
-def read_watchdog_health(path: str | Path) -> dict[str, Any]:
+def read_watchdog_health(
+    path: str | Path,
+    *,
+    max_age_seconds: float = 30.0,
+    now: Callable[[], datetime] = utc_now,
+) -> dict[str, Any]:
     status = read_json(path)
+    configured = watchdog_is_configured(path)
     if status is None:
-        return {"state": "unavailable", "suppression": False}
+        return {"state": "unavailable", "suppression": False, "configured": configured}
+
+    updated = parse_utc(status.get("updated_at_utc"))
+    current = now()
+    current = current.replace(tzinfo=UTC) if current.tzinfo is None else current.astimezone(UTC)
+    try:
+        maximum_age = timedelta(seconds=max_age_seconds)
+    except (OverflowError, TypeError, ValueError):
+        maximum_age = timedelta(seconds=30)
+    if maximum_age <= timedelta(0):
+        maximum_age = timedelta(seconds=30)
+    if updated is None or updated > current or current - updated > maximum_age:
+        reason = "status_timestamp_invalid" if updated is None or updated > current else "status_stale"
+        return {
+            "state": "unavailable",
+            "reason": reason,
+            "suppression": False,
+            "configured": True,
+        }
+
     return {
         "state": status.get("watchdog_state", "unknown"),
         "reason": status.get("reason"),
         "result": status.get("result"),
-        "suppression": bool(status.get("suppression", False)),
-        "attempt_count": int(status.get("attempt_count", 0)),
-        "restart_count": int(status.get("restart_count", 0)),
-        "reboot_count": int(status.get("reboot_count", 0)),
+        "suppression": status.get("suppression") is True,
+        "configured": True,
+        "attempt_count": _safe_nonnegative_int(status.get("attempt_count")),
+        "restart_count": _safe_nonnegative_int(status.get("restart_count")),
+        "reboot_count": _safe_nonnegative_int(status.get("reboot_count")),
         "last_healthy_heartbeat_at_utc": status.get("last_healthy_heartbeat_at_utc"),
         "boot_id": status.get("boot_id"),
     }
+
+
+def _safe_nonnegative_int(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, str | bytes | bytearray | int | float):
+        return 0
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(0, parsed)
+
+
+def watchdog_is_configured(status_path: str | Path) -> bool:
+    """Return installation intent without trusting a successful watchdog poll."""
+    status = Path(status_path)
+    marker = status.with_name(WATCHDOG_INSTALLATION_MARKER)
+    return status.is_file() or marker.is_file()
 
 
 def set_maintenance_hold(

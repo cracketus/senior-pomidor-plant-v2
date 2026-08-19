@@ -102,6 +102,7 @@ Important variables:
 - `NETWORK_CHECK_HOST`, `NETWORK_DNS_CHECK_HOST`, `NETWORK_RECOVERY_STATUS_FILE`: network reachability and host recovery status settings.
 - `DISK_USAGE_PATH`: filesystem path used by Raspberry Pi OS disk health probes.
 - `SERVICE_NAME`: optional systemd service name used for application service health checks.
+- `INDICATOR_ENABLED`, `INDICATOR_BACKEND`, `INDICATOR_*_PIN`, and `INDICATOR_*_HZ`: optional three-LED health indicator controls. It is disabled by default; verify the board and resistors before enabling GPIO.
 - `ADS1115_*_DRY_READING` and `ADS1115_*_WET_READING`: raw ADS1115 soil moisture calibration values from `AnalogIn.value`.
 
 MQTT publishes one JSON payload per tick to:
@@ -604,6 +605,7 @@ This installs the edge and supervisor systemd units plus the Raspberry Pi runtim
 - `system_health.network.last_recovery_exit_code` comes from the optional host Wi-Fi guard status file. `0` means the last guard run completed successfully; non-zero values need host-side investigation.
 - `system_health.application` reports process liveness and uptime. When `SERVICE_NAME` is configured and systemd is available, it also reports service active/substate and main PID.
 - `system_health.watchdog` reports the independent supervisor state, recovery counters, last healthy persisted heartbeat, and suppression status.
+- `system_health.aggregate` reports the canonical versioned edge state and stable machine-readable reasons. `system_health.indicator` reports the requested/rendered state and any isolated GPIO failure.
 
 ### Reading Error Fields
 

@@ -53,10 +53,22 @@ class RaspberryPiGpioAdapter:
             "green": green_pin,
         }
         self._closed = False
-        gpio.setwarnings(False)
-        gpio.setmode(gpio.BCM)
-        for pin in self._pins.values():
-            gpio.setup(pin, gpio.OUT, initial=gpio.LOW)
+        configured: list[int] = []
+        try:
+            gpio.setwarnings(False)
+            gpio.setmode(gpio.BCM)
+            for pin in self._pins.values():
+                gpio.setup(pin, gpio.OUT, initial=gpio.LOW)
+                configured.append(pin)
+        except Exception:
+            try:
+                for pin in configured:
+                    gpio.output(pin, gpio.LOW)
+                if configured:
+                    gpio.cleanup(configured)
+            except Exception:  # noqa: BLE001 - best-effort cleanup after partial GPIO initialization
+                pass
+            raise
 
     def apply(self, pattern: IndicatorPattern) -> None:
         if self._closed:

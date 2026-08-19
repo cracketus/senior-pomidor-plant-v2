@@ -52,14 +52,20 @@ Keep pin ordering consistent on every connector. Place the added 470-ohm resisto
 
 | State | Reference pattern |
 |---|---|
-| `STARTUP` | green startup pulse; current software implementation initializes the ON frame |
+| `STARTUP` | green on/off pulse, 0.5 Hz |
 | `OK` | green steady |
 | `BACKLOG` | yellow blink, 1 Hz |
 | `DEGRADED` | yellow steady |
 | `MAINTENANCE` | red + yellow steady |
 | `CRITICAL` | red blink, 2 Hz |
 
-The model stores animation metadata, while animation scheduling is intentionally separate from sensor acquisition. A future service loop can render blink/pulse frames without blocking the collector.
+Animation is rendered by one daemon worker using a monotonic clock. State changes wake it immediately and never block sensor acquisition. Any GPIO import, initialization, write, or cleanup failure disables only the indicator until the collector is restarted; the collector, spool, and delivery workers continue running.
+
+## Runtime configuration
+
+The production default is `INDICATOR_ENABLED=false`. `INDICATOR_BACKEND=auto` selects `mock` when `MOCK_SENSORS=true` and `gpio` otherwise. Pins default to BCM `17/27/22`; startup, backlog, and critical frequencies default to `0.5/1/2 Hz`. Pins must be unique BCM numbers in the supported range and frequencies must be positive finite values.
+
+Do not set `INDICATOR_ENABLED=true` with the GPIO backend until the exact board traces, common ground, added series resistors, and pin assignments have been checked during a maintenance window.
 
 ## Software boundary
 
@@ -77,7 +83,7 @@ indicator state mapping
             traffic-light PCB
 ```
 
-The indicator is an output adapter only. It must not independently infer health from raw sensor GPIO or duplicate health/recovery logic.
+The canonical `senior-pomidor.edge.health.v1` aggregator applies the priority `CRITICAL > MAINTENANCE > DEGRADED > BACKLOG > OK`; `STARTUP` is used until the first complete evaluation. The indicator is output-only and is deliberately excluded from aggregation to prevent a feedback cycle. Telemetry reports both `system_health.aggregate` and the indicator snapshot.
 
 ## Standalone validation
 
@@ -91,7 +97,7 @@ Before production Raspberry Pi integration:
 6. Run software in mock mode:
 
 ```bash
-python scripts/test_health_indicator.py
+python scripts/health_indicator_smoke.py
 ```
 
 Expected result includes the final mock frame.
@@ -99,7 +105,7 @@ Expected result includes the final mock frame.
 7. On a validated non-production Raspberry Pi or during a maintenance window, run:
 
 ```bash
-python scripts/test_health_indicator.py --real-gpio
+python scripts/health_indicator_smoke.py --real-gpio
 ```
 
 Custom BCM pins can be supplied with `--red-pin`, `--yellow-pin`, and `--green-pin`.
