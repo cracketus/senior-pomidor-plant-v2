@@ -23,5 +23,7 @@ RUN if [ "$INSTALL_HARDWARE_DEPS" = "true" ]; then \
 
 COPY src ./src
 COPY scripts ./scripts
+COPY docker/vcgencmd /usr/local/bin/vcgencmd
+RUN chmod 0755 /usr/local/bin/vcgencmd
 
 CMD ["python", "-m", "src.main"]

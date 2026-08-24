@@ -9,9 +9,11 @@ The unit expects:
 - optional environment file: `/etc/senior-pomidor/edge.env`
 - Docker Compose service: `senior-pomidor-edge`
 
-The hardware image installs `libraspberrypi-bin`, which provides `vcgencmd` for
-the Raspberry Pi power and throttling health probe. Rebuild the hardware image
-after updating the repository so the command is available inside the container.
+The Raspberry Pi host must provide `vcgencmd` from `libraspberrypi-bin`. The
+hardware Compose service bind-mounts the host command into the container; the
+image wrapper calls that mounted host command for the Raspberry Pi power and
+throttling health probe. Rebuild the hardware image after updating the repository
+so the command is available inside the container.
 
 If your checkout lives somewhere else, edit `WorkingDirectory` before installing the unit.
 

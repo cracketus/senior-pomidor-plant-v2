@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+host_vcgencmd=/host/usr/bin/vcgencmd
+if [ ! -x "$host_vcgencmd" ]; then
+    echo "vcgencmd is unavailable: install libraspberrypi-bin on the Raspberry Pi host" >&2
+    exit 127
+fi
+
+exec "$host_vcgencmd" "$@"
