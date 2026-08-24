@@ -26,13 +26,18 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("status")
     list_parser = subparsers.add_parser("list")
-    list_parser.add_argument("--state", choices=("pending", "in_flight", "delivered", "dead_letter"))
+    states = ("pending", "in_flight", "delivered", "dead_letter", "reconciled")
+    list_parser.add_argument("--state", choices=states)
     list_parser.add_argument("--limit", type=int)
     list_parser.add_argument("--sort", choices=("oldest", "newest"), default="newest")
     show = subparsers.add_parser("show")
     show.add_argument("record_id")
     retry = subparsers.add_parser("retry-dead")
     retry.add_argument("record_id", nargs="?")
+    resolve = subparsers.add_parser("resolve-dead")
+    resolve.add_argument("record_id")
+    resolve.add_argument("--reason", required=True, choices=("already_present_on_server",))
+    resolve.add_argument("--evidence", required=True)
     subparsers.add_parser("integrity-check")
     checkpoint = subparsers.add_parser("checkpoint")
     checkpoint.add_argument("--truncate", action="store_true")
@@ -42,7 +47,7 @@ def _parser() -> argparse.ArgumentParser:
     backup.add_argument("destination")
     export = subparsers.add_parser("export")
     export.add_argument("destination")
-    export.add_argument("--state", choices=("pending", "in_flight", "delivered", "dead_letter"))
+    export.add_argument("--state", choices=states)
     export.add_argument("--sort", choices=("oldest", "newest"), default="oldest")
     history = subparsers.add_parser("history")
     history.add_argument("--record-id")
@@ -61,9 +66,15 @@ def main(argv: list[str] | None = None) -> int:
                 asdict(record) for record in repository.list_records(state=args.state, limit=args.limit, sort=args.sort)
             ]
         elif args.command == "show":
-            output = {"record": asdict(repository.get(args.record_id)), "attempts": repository.attempts(args.record_id)}
+            output = {
+                "record": asdict(repository.get(args.record_id)),
+                "attempts": repository.attempts(args.record_id),
+                "resolution": repository.resolution(args.record_id),
+            }
         elif args.command == "retry-dead":
             output = {"retried": repository.retry_dead(args.record_id)}
+        elif args.command == "resolve-dead":
+            output = repository.resolve_dead(args.record_id, reason=args.reason, evidence=args.evidence)
         elif args.command == "integrity-check":
             output = {"result": repository.integrity_check()}
         elif args.command == "checkpoint":
