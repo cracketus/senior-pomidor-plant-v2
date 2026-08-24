@@ -1,6 +1,8 @@
 import json
 import os
 import sqlite3
+import subprocess
+import sys
 import threading
 from datetime import UTC, datetime
 
@@ -46,7 +48,7 @@ def test_enqueue_allocates_sequence_and_identity_atomically(tmp_path) -> None:
     assert first.payload["boot_id"] == "boot-a"
     assert first.payload["stored_at_utc"] == first.stored_at
     assert spool.connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
-    assert spool.connection.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert spool.connection.execute("PRAGMA user_version").fetchone()[0] == 3
 
 
 def test_v1_database_migrates_transactionally_without_losing_records(tmp_path) -> None:
@@ -81,7 +83,7 @@ def test_v1_database_migrates_transactionally_without_losing_records(tmp_path) -
 
     spool = repository(tmp_path)
 
-    assert spool.connection.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert spool.connection.execute("PRAGMA user_version").fetchone()[0] == 3
     assert spool.get("v1-record").observed_at == "2026-08-16T10:00:00Z"
     assert spool.health()["written_total"] == 1
     assert spool.health()["failure_total"] == 1
@@ -103,6 +105,30 @@ def test_restart_recovers_in_flight_and_preserves_sequence(tmp_path) -> None:
     assert restarted.get(first.record_id).state == "pending"
     assert restarted.enqueue(payload()).sequence == 2
     assert restarted.get(first.record_id).boot_id == "boot-a"
+
+
+def test_v2_database_migrates_to_v3_without_losing_payload_or_attempts(tmp_path) -> None:
+    spool = repository(tmp_path)
+    record = spool.enqueue(payload(), record_id="legacy-" + "a" * 64, legacy_hash="a" * 64)
+    spool.claim_batch()
+    spool.complete_attempt(record.record_id, DeliveryResult(DeliveryStatus.RETRY, record.record_id))
+    expected_payload = spool.get(record.record_id).payload
+    expected_attempts = spool.attempts(record.record_id)
+    spool.close()
+
+    connection = sqlite3.connect(tmp_path / "spool.sqlite3")
+    connection.executescript("DROP TABLE dead_letter_resolutions; PRAGMA user_version=2;")
+    connection.close()
+
+    migrated = repository(tmp_path)
+    assert migrated.connection.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert migrated.get(record.record_id).payload == expected_payload
+    assert migrated.attempts(record.record_id) == expected_attempts
+    migrated.close()
+
+    reopened = repository(tmp_path)
+    assert reopened.connection.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert reopened.get(record.record_id).payload == expected_payload
 
 
 @pytest.mark.parametrize("status", [DeliveryStatus.ACCEPTED, DeliveryStatus.DUPLICATE])
@@ -175,6 +201,265 @@ def test_cleanup_only_deletes_old_delivered(tmp_path) -> None:
     assert spool.cleanup_delivered(now=datetime(2026, 8, 16, tzinfo=UTC)) == 1
     assert spool.get(pending.record_id).state == "pending"
     assert spool.get(dead.record_id).state == "dead_letter"
+
+
+def test_resolve_dead_is_atomic_audited_and_logically_reconciled(tmp_path) -> None:
+    spool = repository(tmp_path)
+    record = spool.enqueue(payload(), record_id="legacy-" + "b" * 64, legacy_hash="b" * 64)
+    spool.claim_batch()
+    spool.complete_attempt(
+        record.record_id,
+        DeliveryResult(
+            DeliveryStatus.REJECTED,
+            record.record_id,
+            detail="server rejected legacy payload",
+            error_code="server_rejected",
+        ),
+    )
+    before = spool.health()
+    resolved_at = datetime(2026, 8, 16, 11, 0, tzinfo=UTC)
+
+    result = spool.resolve_dead(
+        record.record_id,
+        reason="already_present_on_server",
+        evidence="server telemetry_events.id=123",
+        now=resolved_at,
+    )
+
+    assert result == {
+        "record_id": record.record_id,
+        "state": "reconciled",
+        "reason": "already_present_on_server",
+        "evidence": "server telemetry_events.id=123",
+        "resolved_at": "2026-08-16T11:00:00Z",
+        "changed": True,
+    }
+    reconciled = spool.get(record.record_id)
+    assert reconciled.state == "reconciled"
+    assert reconciled.attempt_count == 1
+    assert reconciled.last_error_code is None
+    audit = spool.resolution(record.record_id)
+    assert audit == {
+        "record_id": record.record_id,
+        "resolved_at": "2026-08-16T11:00:00Z",
+        "reason": "already_present_on_server",
+        "evidence": "server telemetry_events.id=123",
+        "attempt_count": 1,
+        "last_error_code": "server_rejected",
+        "last_error": "server rejected legacy payload",
+        "dead_letter_at": audit["dead_letter_at"],
+    }
+    assert audit["dead_letter_at"] is not None
+    row = spool.connection.execute(
+        "SELECT state,delivered_at,dead_letter_at,last_error,last_error_code FROM records WHERE record_id=?",
+        (record.record_id,),
+    ).fetchone()
+    assert tuple(row) == ("delivered", "2026-08-16T11:00:00Z", None, None, None)
+
+    health = spool.health()
+    assert health["status"] == "OK"
+    assert health["dead_letter_count"] == 0
+    assert health["reconciled_count"] == 1
+    assert health["resolution_total"] == 1
+    assert health["last_reconciliation_at_utc"] == "2026-08-16T11:00:00Z"
+    assert health["last_reconciliation_reason"] == "already_present_on_server"
+    for key in ("delivery_attempt_count", "success_total", "duplicate_total", "replayed_total"):
+        assert health[key] == before[key]
+
+
+def test_resolve_dead_is_idempotent_and_rejects_conflicts(tmp_path) -> None:
+    spool = repository(tmp_path)
+    record = spool.enqueue(payload(), record_id="legacy-" + "c" * 64, legacy_hash="c" * 64)
+    spool.connection.execute(
+        "UPDATE records SET state='dead_letter',attempt_count=2,dead_letter_at=? WHERE record_id=?",
+        ("2026-08-16T10:30:00Z", record.record_id),
+    )
+    kwargs = {
+        "reason": "already_present_on_server",
+        "evidence": "server telemetry_events.id=456",
+    }
+
+    assert spool.resolve_dead(record.record_id, **kwargs)["changed"] is True
+    assert spool.resolve_dead(record.record_id, **kwargs)["changed"] is False
+    with pytest.raises(SpoolError, match="different reason or evidence"):
+        spool.resolve_dead(record.record_id, reason=kwargs["reason"], evidence="change-record=other")
+
+    assert spool.resolution(record.record_id)["evidence"] == kwargs["evidence"]
+
+
+@pytest.mark.parametrize(
+    ("record_id", "reason", "evidence", "error"),
+    [
+        ("not-legacy", "already_present_on_server", "server id=1", "legacy"),
+        ("legacy-" + "d" * 64, "unknown", "server id=1", "unsupported"),
+        ("legacy-" + "d" * 64, "already_present_on_server", "   ", "non-empty"),
+        ("legacy-" + "d" * 64, "already_present_on_server", "x" * 1025, "1024"),
+    ],
+)
+def test_resolve_dead_validates_operator_input(tmp_path, record_id, reason, evidence, error) -> None:
+    spool = repository(tmp_path)
+    with pytest.raises(SpoolError, match=error):
+        spool.resolve_dead(record_id, reason=reason, evidence=evidence)
+    assert spool.connection.execute("SELECT COUNT(*) FROM dead_letter_resolutions").fetchone()[0] == 0
+
+
+def test_resolve_dead_rejects_missing_or_non_dead_record(tmp_path) -> None:
+    spool = repository(tmp_path)
+    missing_id = "legacy-" + "e" * 64
+    with pytest.raises(KeyError, match=missing_id):
+        spool.resolve_dead(
+            missing_id,
+            reason="already_present_on_server",
+            evidence="server telemetry_events.id=1",
+        )
+    pending = spool.enqueue(payload(), record_id="legacy-" + "f" * 64, legacy_hash="f" * 64)
+    with pytest.raises(SpoolError, match="dead_letter"):
+        spool.resolve_dead(
+            pending.record_id,
+            reason="already_present_on_server",
+            evidence="server telemetry_events.id=1",
+        )
+    assert spool.connection.execute("SELECT COUNT(*) FROM dead_letter_resolutions").fetchone()[0] == 0
+
+
+def test_reconciled_record_is_not_retried_claimed_or_cleaned_up(tmp_path) -> None:
+    spool = repository(tmp_path)
+    record = spool.enqueue(payload(), record_id="legacy-" + "1" * 64, legacy_hash="1" * 64)
+    spool.connection.execute(
+        "UPDATE records SET state='dead_letter',dead_letter_at='2026-01-01T00:00:00Z' WHERE record_id=?",
+        (record.record_id,),
+    )
+    spool.resolve_dead(
+        record.record_id,
+        reason="already_present_on_server",
+        evidence="server telemetry_events.id=789",
+        now=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    assert spool.retry_dead(record.record_id) == 0
+    assert spool.retry_dead() == 0
+    assert spool.claim_batch() == []
+    assert spool.cleanup_delivered(now=datetime(2026, 8, 16, tzinfo=UTC)) == 0
+    assert [item.record_id for item in spool.list_records(state="reconciled")] == [record.record_id]
+    assert spool.list_records(state="delivered") == []
+    assert spool.get(record.record_id).payload["record_id"] == record.record_id
+
+    export_path = tmp_path / "reconciled.jsonl"
+    backup_path = tmp_path / "backup.sqlite3"
+    assert spool.export_records(export_path, state="reconciled") == 1
+    exported = json.loads(export_path.read_text(encoding="utf-8"))
+    assert exported["record"]["state"] == "reconciled"
+    assert exported["resolution"]["evidence"] == "server telemetry_events.id=789"
+    spool.online_backup(backup_path)
+    backup = sqlite3.connect(backup_path)
+    try:
+        assert backup.execute("SELECT evidence FROM dead_letter_resolutions").fetchone()[0] == (
+            "server telemetry_events.id=789"
+        )
+        assert backup.execute("SELECT payload_json FROM records WHERE record_id=?", (record.record_id,)).fetchone()
+    finally:
+        backup.close()
+
+    with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+        spool.connection.execute(
+            "UPDATE dead_letter_resolutions SET evidence='changed' WHERE record_id=?",
+            (record.record_id,),
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+        spool.connection.execute("DELETE FROM dead_letter_resolutions WHERE record_id=?", (record.record_id,))
+
+
+def test_resolve_dead_cli_reports_reconciliation_and_show_includes_audit(tmp_path) -> None:
+    spool = repository(tmp_path)
+    record = spool.enqueue(payload(), record_id="legacy-" + "4" * 64, legacy_hash="4" * 64)
+    spool.connection.execute(
+        "UPDATE records SET state='dead_letter',dead_letter_at='2026-01-01T00:00:00Z' WHERE record_id=?",
+        (record.record_id,),
+    )
+    spool.close()
+    command = [
+        sys.executable,
+        "scripts/telemetry_spool.py",
+        "--db",
+        str(tmp_path / "spool.sqlite3"),
+        "resolve-dead",
+        record.record_id,
+        "--reason",
+        "already_present_on_server",
+        "--evidence",
+        "server telemetry_events.id=1000",
+    ]
+
+    first = subprocess.run(command, check=True, capture_output=True, text=True)
+    repeated = subprocess.run(command, check=True, capture_output=True, text=True)
+    show = subprocess.run(
+        [
+            sys.executable,
+            "scripts/telemetry_spool.py",
+            "--db",
+            str(tmp_path / "spool.sqlite3"),
+            "show",
+            record.record_id,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert json.loads(first.stdout)["changed"] is True
+    assert json.loads(repeated.stdout)["changed"] is False
+    shown = json.loads(show.stdout)
+    assert shown["record"]["state"] == "reconciled"
+    assert shown["resolution"]["reason"] == "already_present_on_server"
+
+
+def test_resolution_and_state_transition_roll_back_together(tmp_path) -> None:
+    spool = repository(tmp_path)
+    record = spool.enqueue(payload(), record_id="legacy-" + "2" * 64, legacy_hash="2" * 64)
+    spool.connection.execute(
+        "UPDATE records SET state='dead_letter',dead_letter_at='2026-01-01T00:00:00Z' WHERE record_id=?",
+        (record.record_id,),
+    )
+    spool.connection.execute(
+        """CREATE TRIGGER fail_resolution_transition BEFORE UPDATE OF state ON records
+        WHEN OLD.record_id='legacy-"""
+        + "2" * 64
+        + "' BEGIN SELECT RAISE(ABORT, 'simulated failure'); END"
+    )
+
+    with pytest.raises(sqlite3.IntegrityError, match="simulated failure"):
+        spool.resolve_dead(
+            record.record_id,
+            reason="already_present_on_server",
+            evidence="server telemetry_events.id=999",
+        )
+
+    assert spool.get(record.record_id).state == "dead_letter"
+    assert spool.resolution(record.record_id) is None
+
+
+def test_locked_database_cannot_partially_resolve_dead(tmp_path) -> None:
+    spool = repository(tmp_path, busy_timeout_ms=1)
+    record = spool.enqueue(payload(), record_id="legacy-" + "3" * 64, legacy_hash="3" * 64)
+    spool.connection.execute(
+        "UPDATE records SET state='dead_letter',dead_letter_at='2026-01-01T00:00:00Z' WHERE record_id=?",
+        (record.record_id,),
+    )
+    lock = sqlite3.connect(spool.path, isolation_level=None)
+    lock.execute("BEGIN IMMEDIATE")
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            spool.resolve_dead(
+                record.record_id,
+                reason="already_present_on_server",
+                evidence="server telemetry_events.id=999",
+            )
+    finally:
+        lock.execute("ROLLBACK")
+        lock.close()
+
+    assert spool.get(record.record_id).state == "dead_letter"
+    assert spool.resolution(record.record_id) is None
 
 
 def test_capacity_check_accounts_for_reusable_sqlite_pages(tmp_path) -> None:

@@ -23,12 +23,44 @@ python scripts/telemetry_spool.py history --record-id RECORD_ID --sort newest
 python scripts/telemetry_spool.py integrity-check
 python scripts/telemetry_spool.py checkpoint --truncate
 python scripts/telemetry_spool.py retry-dead RECORD_ID
+python scripts/telemetry_spool.py list --state reconciled
 python scripts/telemetry_spool.py cleanup --delivered-retention-days 7
 python scripts/telemetry_spool.py online-backup backups/telemetry-spool.sqlite3
 python scripts/telemetry_spool.py export exports/telemetry.jsonl --sort oldest
 ```
 
-`retry-dead` is the only operator transition out of dead letter. The CLI intentionally has no command that deletes pending or dead-letter telemetry.
+`retry-dead` returns a failed delivery to the network queue. `resolve-dead` is a separate, single-record
+operator transition for legacy telemetry that has already been proven present on the server. It never sends the
+record again and never deletes its payload or immutable resolution audit. There is deliberately no bulk resolve.
+
+Before resolving one record:
+
+1. Create an online backup and run `integrity-check`.
+2. Run `show LEGACY_RECORD_ID` and confirm it is the exact `legacy-*` row in `dead_letter`.
+3. Find the matching server `telemetry_events.id` (or an approved stable change-record reference) and retain that
+   server-side evidence. Do not resolve from payload similarity or assumption alone.
+4. Record delivery/status counters so the post-check can prove that reconciliation did not simulate a network ACK.
+
+Resolve exactly one confirmed record:
+
+```bash
+sudo python3 scripts/telemetry_spool.py resolve-dead \
+  legacy-aa0a39fda11a78763b19dbd77c3139835401bf7e9b1dde64164ba0e18e35df2e \
+  --reason already_present_on_server \
+  --evidence 'server telemetry_events.id=<ID>'
+```
+
+Then run `show LEGACY_RECORD_ID`, `list --state reconciled`, and `status`. Require logical state
+`reconciled`, `dead_letter_count=0`, `reconciled_count=1`, an unchanged set of delivery/success/duplicate/replay
+counters, and a running worker. Status is `OK` when the queue is empty or `BACKLOG` while other records drain.
+Repeating the exact command is safe and returns `changed=false`; different evidence or reason is rejected.
+
+Rollback requires stopping the edge service and restoring the online backup made immediately before the schema
+migration. Do not run an older application against the migrated database: applications that support only schema
+v2 fail safe when they see v3. Verify the restored database with `integrity-check`, record/payload counts, and the
+pre-change status before restarting the older release.
+
+The CLI intentionally has no command that deletes pending, dead-letter, or reconciled telemetry.
 
 ## Corruption
 
@@ -40,7 +72,11 @@ At 80/90/95 percent disk use, `disk_status` becomes warning/degraded/critical. W
 
 ## Schema migration
 
-Opening a v1 database performs one transactional migration to SQLite `user_version=2`. It adds first/last attempt timestamps, normalized error codes, recovery tracking, and seeds durable totals from existing rows and delivery history. Before deploying, create an online backup. Startup refuses unknown future schema versions and never replaces the database.
+Opening an older database migrates transactionally to SQLite `user_version=3`. The v1-to-v2 step adds first/last
+attempt timestamps, normalized error codes, recovery tracking, and seeds durable totals from existing rows and
+delivery history. The v2-to-v3 step adds immutable `dead_letter_resolutions` audit records without rebuilding
+`records`. Before deploying, create an online backup. Startup refuses unknown future schema versions and never
+replaces the database. Rollback across v3 requires restoring that backup.
 
 ## Legacy migration
 
