@@ -18,8 +18,10 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 FINAL_STATES = ("delivered", "dead_letter")
+RESOLUTION_REASON_ALREADY_PRESENT = "already_present_on_server"
+MAX_RESOLUTION_EVIDENCE_LENGTH = 1024
 
 
 class SpoolError(RuntimeError):
@@ -261,13 +263,29 @@ class SpoolRepository:
                     error_code TEXT
                 );
                 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                CREATE TABLE dead_letter_resolutions (
+                    record_id TEXT PRIMARY KEY REFERENCES records(record_id),
+                    resolved_at TEXT NOT NULL,
+                    reason TEXT NOT NULL CHECK(reason='already_present_on_server'),
+                    evidence TEXT NOT NULL CHECK(length(trim(evidence)) > 0 AND length(evidence) <= 1024),
+                    attempt_count INTEGER NOT NULL,
+                    last_error_code TEXT,
+                    last_error TEXT,
+                    dead_letter_at TEXT
+                );
+                CREATE TRIGGER dead_letter_resolutions_immutable_update
+                BEFORE UPDATE ON dead_letter_resolutions
+                BEGIN SELECT RAISE(ABORT, 'dead-letter resolution audit is immutable'); END;
+                CREATE TRIGGER dead_letter_resolutions_immutable_delete
+                BEFORE DELETE ON dead_letter_resolutions
+                BEGIN SELECT RAISE(ABORT, 'dead-letter resolution audit is immutable'); END;
                 CREATE INDEX records_delivery_idx ON records(state, next_attempt_at, stored_at);
                 CREATE INDEX attempts_record_idx ON delivery_attempts(record_id, id);
-                PRAGMA user_version=2;
+                PRAGMA user_version=3;
                 COMMIT;
                 """
             )
-            version = 2
+            version = 3
         if version == 1:
             self.connection.executescript(
                 """
@@ -291,6 +309,31 @@ class SpoolRepository:
                     WHERE result='duplicate';
                 INSERT OR IGNORE INTO metadata(key,value) VALUES('replayed_total','0');
                 PRAGMA user_version=2;
+                COMMIT;
+                """
+            )
+            version = 2
+        if version == 2:
+            self.connection.executescript(
+                """
+                BEGIN IMMEDIATE;
+                CREATE TABLE dead_letter_resolutions (
+                    record_id TEXT PRIMARY KEY REFERENCES records(record_id),
+                    resolved_at TEXT NOT NULL,
+                    reason TEXT NOT NULL CHECK(reason='already_present_on_server'),
+                    evidence TEXT NOT NULL CHECK(length(trim(evidence)) > 0 AND length(evidence) <= 1024),
+                    attempt_count INTEGER NOT NULL,
+                    last_error_code TEXT,
+                    last_error TEXT,
+                    dead_letter_at TEXT
+                );
+                CREATE TRIGGER dead_letter_resolutions_immutable_update
+                BEFORE UPDATE ON dead_letter_resolutions
+                BEGIN SELECT RAISE(ABORT, 'dead-letter resolution audit is immutable'); END;
+                CREATE TRIGGER dead_letter_resolutions_immutable_delete
+                BEFORE DELETE ON dead_letter_resolutions
+                BEGIN SELECT RAISE(ABORT, 'dead-letter resolution audit is immutable'); END;
+                PRAGMA user_version=3;
                 COMMIT;
                 """
             )
@@ -337,7 +380,7 @@ class SpoolRepository:
             existing = connection.execute("SELECT * FROM records WHERE record_id=?", (record_id,)).fetchone()
             if existing is not None:
                 connection.execute("COMMIT")
-                return self._row_to_record(existing)
+                return self.get(record_id)
             row = connection.execute("SELECT value FROM metadata WHERE key=?", (counter_key,)).fetchone()
             sequence = int(row[0]) + 1 if row else 1
             connection.execute(
@@ -418,7 +461,11 @@ class SpoolRepository:
         return imported, corrupt
 
     def get(self, record_id: str) -> SpoolRecord:
-        row = self.connection.execute("SELECT * FROM records WHERE record_id=?", (record_id,)).fetchone()
+        row = self.connection.execute(
+            "SELECT records.*,dead_letter_resolutions.record_id AS resolution_record_id "
+            "FROM records LEFT JOIN dead_letter_resolutions USING(record_id) WHERE records.record_id=?",
+            (record_id,),
+        ).fetchone()
         if row is None:
             raise KeyError(record_id)
         return self._row_to_record(row)
@@ -429,8 +476,15 @@ class SpoolRepository:
         if sort not in {"oldest", "newest"}:
             raise SpoolError("sort must be oldest or newest")
         direction = "ASC" if sort == "oldest" else "DESC"
-        where = "" if state is None else " WHERE state=?"
-        parameters: list[Any] = [] if state is None else [state]
+        if state == "reconciled":
+            where = " WHERE dead_letter_resolutions.record_id IS NOT NULL"
+            parameters: list[Any] = []
+        elif state == "delivered":
+            where = " WHERE records.state=? AND dead_letter_resolutions.record_id IS NULL"
+            parameters = [state]
+        else:
+            where = "" if state is None else " WHERE records.state=?"
+            parameters = [] if state is None else [state]
         limit_sql = ""
         if limit is not None:
             if limit < 1:
@@ -438,7 +492,9 @@ class SpoolRepository:
             limit_sql = " LIMIT ?"
             parameters.append(limit)
         rows = self.connection.execute(
-            f"SELECT * FROM records{where} ORDER BY stored_at {direction},sequence {direction}{limit_sql}",
+            "SELECT records.*,dead_letter_resolutions.record_id AS resolution_record_id "
+            f"FROM records LEFT JOIN dead_letter_resolutions USING(record_id){where} "
+            f"ORDER BY stored_at {direction},sequence {direction}{limit_sql}",
             parameters,
         )
         return [self._row_to_record(row) for row in rows]
@@ -604,10 +660,97 @@ class SpoolRepository:
             "UPDATE records SET state='pending',next_attempt_at=NULL,dead_letter_at=NULL WHERE state='dead_letter'"
         ).rowcount
 
+    def resolution(self, record_id: str) -> dict[str, Any] | None:
+        row = self.connection.execute(
+            "SELECT record_id,resolved_at,reason,evidence,attempt_count,last_error_code,last_error,dead_letter_at "
+            "FROM dead_letter_resolutions WHERE record_id=?",
+            (record_id,),
+        ).fetchone()
+        return None if row is None else dict(row)
+
+    def resolve_dead(
+        self,
+        record_id: str,
+        *,
+        reason: str,
+        evidence: str,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        if not record_id.startswith("legacy-"):
+            raise SpoolError("resolve-dead requires an exact legacy-* record_id")
+        if reason != RESOLUTION_REASON_ALREADY_PRESENT:
+            raise SpoolError(f"unsupported dead-letter resolution reason: {reason}")
+        if not evidence.strip():
+            raise SpoolError("dead-letter resolution evidence must be non-empty")
+        if len(evidence) > MAX_RESOLUTION_EVIDENCE_LENGTH:
+            raise SpoolError(f"dead-letter resolution evidence exceeds {MAX_RESOLUTION_EVIDENCE_LENGTH} characters")
+
+        connection = self.connection
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                "SELECT record_id,resolved_at,reason,evidence FROM dead_letter_resolutions WHERE record_id=?",
+                (record_id,),
+            ).fetchone()
+            if existing is not None:
+                if str(existing["reason"]) != reason or str(existing["evidence"]) != evidence:
+                    raise SpoolError("record already reconciled with different reason or evidence")
+                connection.execute("COMMIT")
+                return {**dict(existing), "state": "reconciled", "changed": False}
+
+            record = connection.execute(
+                "SELECT state,attempt_count,last_error_code,last_error,dead_letter_at FROM records WHERE record_id=?",
+                (record_id,),
+            ).fetchone()
+            if record is None:
+                raise KeyError(record_id)
+            if str(record["state"]) != "dead_letter":
+                raise SpoolError("record must be in dead_letter state")
+
+            resolved_at = utc_text(now)
+            connection.execute(
+                """INSERT INTO dead_letter_resolutions(
+                    record_id,resolved_at,reason,evidence,attempt_count,last_error_code,last_error,dead_letter_at
+                ) VALUES(?,?,?,?,?,?,?,?)""",
+                (
+                    record_id,
+                    resolved_at,
+                    reason,
+                    evidence,
+                    int(record["attempt_count"]),
+                    record["last_error_code"],
+                    record["last_error"],
+                    record["dead_letter_at"],
+                ),
+            )
+            changed = connection.execute(
+                """UPDATE records SET state='delivered',delivered_at=?,dead_letter_at=NULL,
+                   last_error=NULL,last_error_code=NULL
+                   WHERE record_id=? AND state='dead_letter'""",
+                (resolved_at, record_id),
+            ).rowcount
+            if changed != 1:
+                raise SpoolError("dead-letter state changed during reconciliation")
+            connection.execute("COMMIT")
+            return {
+                "record_id": record_id,
+                "state": "reconciled",
+                "reason": reason,
+                "evidence": evidence,
+                "resolved_at": resolved_at,
+                "changed": True,
+            }
+        except Exception:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
+
     def cleanup_delivered(self, retention_days: int = 7, now: datetime | None = None) -> int:
         cutoff = utc_text((now or utc_now()) - timedelta(days=retention_days))
         return self.connection.execute(
-            "DELETE FROM records WHERE state='delivered' AND delivered_at<?", (cutoff,)
+            "DELETE FROM records WHERE state='delivered' AND delivered_at<? "
+            "AND NOT EXISTS (SELECT 1 FROM dead_letter_resolutions WHERE record_id=records.record_id)",
+            (cutoff,),
         ).rowcount
 
     def checkpoint(self, truncate: bool = False) -> tuple[int, int, int]:
@@ -677,6 +820,7 @@ class SpoolRepository:
                         "last_error_code": record.last_error_code,
                     },
                     "attempts": self.attempts(record.record_id),
+                    "resolution": self.resolution(record.record_id),
                 }
                 stream.write(json.dumps(item, separators=(",", ":"), sort_keys=True) + "\n")
         return len(records)
@@ -757,6 +901,10 @@ class SpoolRepository:
         failure_total = int(self.get_metadata("failure_total") or 0)
         duplicate_total = int(self.get_metadata("duplicate_total") or 0)
         replayed_total = int(self.get_metadata("replayed_total") or 0)
+        resolution_total = int(self.connection.execute("SELECT COUNT(*) FROM dead_letter_resolutions").fetchone()[0])
+        last_resolution = self.connection.execute(
+            "SELECT resolved_at,reason FROM dead_letter_resolutions ORDER BY resolved_at DESC,rowid DESC LIMIT 1"
+        ).fetchone()
         last_success = self.get_metadata("last_successful_delivery_at") or None
         last_error_code = self.get_metadata("last_delivery_error_code") or None
         return {
@@ -765,8 +913,12 @@ class SpoolRepository:
             "pending_count": pending,
             "backlog_count": pending + counts.get("in_flight", 0),
             "in_flight_count": counts.get("in_flight", 0),
-            "delivered_count": counts.get("delivered", 0),
+            "delivered_count": counts.get("delivered", 0) - resolution_total,
             "dead_letter_count": dead,
+            "reconciled_count": resolution_total,
+            "resolution_total": resolution_total,
+            "last_reconciliation_at_utc": None if last_resolution is None else last_resolution["resolved_at"],
+            "last_reconciliation_reason": None if last_resolution is None else last_resolution["reason"],
             "oldest_pending_age_seconds": oldest_seconds,
             "outage_duration_seconds": outage_seconds,
             "database_size_bytes": self.total_db_bytes(),
@@ -808,7 +960,7 @@ class SpoolRepository:
             observed_at=str(row["observed_at"]),
             stored_at=str(row["stored_at"]),
             payload=json.loads(row["payload_json"]),
-            state=str(row["state"]),
+            state="reconciled" if row["resolution_record_id"] is not None else str(row["state"]),
             attempt_count=int(row["attempt_count"]),
             next_attempt_at=row["next_attempt_at"],
             first_attempt_at=row["first_attempt_at"],
