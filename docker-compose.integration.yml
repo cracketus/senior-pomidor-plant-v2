@@ -1,0 +1,117 @@
+services:
+  mqtt-broker:
+    image: eclipse-mosquitto:2.1.2-alpine
+    command: mosquitto -c /mosquitto-no-auth.conf
+    volumes:
+      - ./docker/integration/mosquitto.conf:/mosquitto-no-auth.conf:ro
+    networks:
+      - integration
+    healthcheck:
+      test: ["CMD", "mosquitto_pub", "-h", "127.0.0.1", "-t", "integration/health", "-m", "ready"]
+      interval: 1s
+      timeout: 2s
+      retries: 20
+      start_period: 2s
+
+  mock-core:
+    build:
+      context: .
+      dockerfile: docker/integration/Dockerfile
+      target: mock-core
+    networks:
+      - integration
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=1)"
+      interval: 1s
+      timeout: 2s
+      retries: 20
+      start_period: 2s
+
+  integration-test:
+    build:
+      context: .
+      dockerfile: docker/integration/Dockerfile
+      target: integration-test
+    environment:
+      DEVICE_ID: edge-integration-100
+      EXPECTED_TOPIC: integration/edge-integration-100/telemetry
+      MQTT_HOST: mqtt-broker
+      MQTT_PORT: "1883"
+      CORE_RECEIVED_URL: http://mock-core:8080/received
+      SPOOL_DB_PATH: /spool/telemetry-spool.sqlite3
+      TEST_TIMEOUT_SECONDS: "45"
+    volumes:
+      - telemetry-spool:/spool:ro
+    networks:
+      - integration
+    depends_on:
+      mqtt-broker:
+        condition: service_healthy
+      mock-core:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/integration-subscriber-ready"]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+      start_period: 2s
+
+  edge:
+    build:
+      context: .
+      args:
+        INSTALL_HARDWARE_DEPS: "false"
+    environment:
+      DEVICE_ID: edge-integration-100
+      MOCK_SENSORS: "true"
+      POLL_INTERVAL_SECONDS: "5"
+      MQTT_HOST: mqtt-broker
+      MQTT_PORT: "1883"
+      MQTT_TOPIC_PREFIX: integration
+      MQTT_TLS: "false"
+      HTTP_ENABLED: "true"
+      CORE_HTTP_URL: http://mock-core:8080/api/v1/edge/telemetry
+      HTTP_TIMEOUT_SECONDS: "2"
+      TELEMETRY_SPOOL_DB_PATH: /spool/telemetry-spool.sqlite3
+      TELEMETRY_SPOOL_PENDING_RETENTION_DAYS: "14"
+      TELEMETRY_SPOOL_DELIVERED_RETENTION_DAYS: "1"
+      TELEMETRY_SPOOL_MAX_PAYLOAD_BYTES: "4096"
+      TELEMETRY_SPOOL_CAPACITY_MB: "1300"
+      TELEMETRY_SPOOL_BATCH_SIZE: "1"
+      TELEMETRY_SPOOL_RATE_LIMIT_PER_SECOND: "100"
+      TELEMETRY_SPOOL_BUSY_TIMEOUT_MS: "5000"
+      TELEMETRY_SPOOL_CHECKPOINT_INTERVAL_SECONDS: "5"
+      TELEMETRY_SPOOL_RETRY_SCHEDULE_SECONDS: "1"
+      TELEMETRY_SPOOL_RETRY_JITTER: "0"
+      TELEMETRY_SPOOL_MAX_ATTEMPTS: "3"
+      LOCAL_STORAGE_DIR: /tmp/telemetry
+      LOCAL_EVENT_DIR: /tmp/events
+      WATCHDOG_HEARTBEAT_FILE: /tmp/watchdog/heartbeat.json
+      WATCHDOG_STATUS_FILE: /tmp/watchdog/status.json
+      WATCHDOG_HISTORY_FILE: /tmp/watchdog/history.json
+      WATCHDOG_MAINTENANCE_FILE: /tmp/watchdog/maintenance.json
+      CAMERA_ENABLED: "false"
+      PHOTO_UPLOAD_ENABLED: "false"
+      INDICATOR_ENABLED: "false"
+    volumes:
+      - telemetry-spool:/spool
+    networks:
+      - integration
+    depends_on:
+      mqtt-broker:
+        condition: service_healthy
+      mock-core:
+        condition: service_healthy
+      integration-test:
+        condition: service_healthy
+
+networks:
+  integration:
+    internal: true
+
+volumes:
+  telemetry-spool:
