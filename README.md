@@ -333,9 +333,19 @@ Shell, Docker, and secret hygiene checks used by CI:
 shellcheck scripts/setup_raspberry_pi.sh
 docker compose config
 docker compose -f docker-compose.mock.yml config
+docker compose -f docker-compose.integration.yml config
 hadolint Dockerfile
 gitleaks detect --source . --no-git
 ```
+
+Run the isolated MQTT and HTTP delivery integration stack:
+
+```bash
+docker compose -f docker-compose.integration.yml up --build --abort-on-container-exit --exit-code-from integration-test
+docker compose -f docker-compose.integration.yml down --volumes --remove-orphans
+```
+
+The stack uses mock sensors, an internal-only network, a Mosquitto broker, and a test-only Core server. The runner validates the shared MQTT/HTTP payload and its final SQLite spool state; it publishes no host ports. Always run the cleanup command so the test starts with an empty spool volume.
 
 Run a single mock telemetry tick on Windows PowerShell:
 

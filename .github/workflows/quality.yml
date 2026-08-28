@@ -10,6 +10,31 @@ permissions:
   contents: read
 
 jobs:
+  edge-delivery-integration:
+    name: Edge delivery integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run edge delivery integration
+        run: >-
+          docker compose -f docker-compose.integration.yml up --build
+          --abort-on-container-exit --exit-code-from integration-test
+
+      - name: Show integration service logs
+        if: failure()
+        run: >-
+          docker compose -f docker-compose.integration.yml logs --no-color
+          edge mqtt-broker mock-core integration-test
+
+      - name: Remove integration stack
+        if: always()
+        run: >-
+          docker compose -f docker-compose.integration.yml down
+          --volumes --remove-orphans
+
   edge-docker-smoke:
     name: Edge Docker smoke
     runs-on: ubuntu-latest
@@ -184,6 +209,9 @@ jobs:
 
       - name: Validate mock Compose file
         run: docker compose -f docker-compose.mock.yml config
+
+      - name: Validate integration Compose file
+        run: docker compose -f docker-compose.integration.yml config
 
       - name: Check Dockerfile
         uses: hadolint/hadolint-action@v3.1.0
