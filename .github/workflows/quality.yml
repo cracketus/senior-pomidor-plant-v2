@@ -201,6 +201,9 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck
 
+      - name: Validate GitHub Actions workflows
+        run: docker run --rm -v "$GITHUB_WORKSPACE:/repo" --workdir /repo rhysd/actionlint:1.7.12 -color
+
       - name: Check setup script
         run: shellcheck scripts/setup_raspberry_pi.sh
 

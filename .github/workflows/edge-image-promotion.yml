@@ -1,0 +1,65 @@
+name: Promote edge image
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_digest:
+        description: "Validated multi-arch digest from the release-candidate artifact"
+        required: true
+        type: string
+      release_tag:
+        description: "Immutable SemVer release tag, for example v0.2.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: edge-image-promotion
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/senior-pomidor-edge
+
+jobs:
+  promote:
+    name: Promote existing digest without rebuilding
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out release helper
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate and promote digest
+        shell: bash
+        env:
+          SOURCE_DIGEST: ${{ inputs.source_digest }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python scripts/edge_image_release.py promote \
+            --image "$IMAGE" \
+            --source-digest "$SOURCE_DIGEST" \
+            --release-tag "$RELEASE_TAG" \
+            --output edge-image-promotion.json \
+            --workflow-url "$WORKFLOW_URL" \
+            --actor "${{ github.actor }}"
+          cat edge-image-promotion.json >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Upload promotion evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-image-promotion-${{ inputs.release_tag }}
+          path: edge-image-promotion.json
+          if-no-files-found: error
+          retention-days: 365

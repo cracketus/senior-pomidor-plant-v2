@@ -378,6 +378,7 @@ Operations runbooks:
 
 - [Edge architecture overview](docs/architecture.md)
 - [Permanent Ubuntu software-staging edge](docs/edge-staging-runbook.md)
+- [Immutable edge image release and promotion](docs/edge-image-release.md)
 - [Hardware BOM and wiring guide](docs/hardware-bom-and-wiring.md)
 - [Raspberry Pi 24/7 OS configuration](docs/raspberry-pi-24-7-os.md)
 - [systemd edge service guide](docs/edge-service.md)
