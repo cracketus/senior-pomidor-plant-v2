@@ -1,0 +1,32 @@
+name: senior-pomidor-edge-staging
+
+services:
+  edge-staging:
+    image: ${EDGE_IMAGE:?EDGE_IMAGE must be a GHCR digest reference}
+    container_name: senior-pomidor-edge-staging
+    restart: unless-stopped
+    environment:
+      DEVICE_ID: edge-staging-ubuntu-01
+      MOCK_SENSORS: "true"
+      MQTT_HOST: ${STAGING_MQTT_HOST:?STAGING_MQTT_HOST is required}
+      MQTT_PORT: ${STAGING_MQTT_PORT:-1883}
+      MQTT_USERNAME: ${STAGING_MQTT_USERNAME:?STAGING_MQTT_USERNAME is required}
+      MQTT_PASSWORD: ${STAGING_MQTT_PASSWORD:?STAGING_MQTT_PASSWORD is required}
+      MQTT_TOPIC_PREFIX: senior-pomidor-staging
+      MQTT_TLS: ${STAGING_MQTT_TLS:-true}
+      HTTP_ENABLED: "true"
+      CORE_HTTP_URL: ${STAGING_CORE_HTTP_URL:?STAGING_CORE_HTTP_URL is required}
+      TELEMETRY_UPLOAD_TOKEN: ${STAGING_TELEMETRY_UPLOAD_TOKEN:?STAGING_TELEMETRY_UPLOAD_TOKEN is required}
+      TELEMETRY_SPOOL_DB_PATH: data/telemetry-spool.sqlite3
+      LOCAL_STORAGE_DIR: data/telemetry
+      LOCAL_EVENT_DIR: data/events
+      CAMERA_ENABLED: "false"
+      CAMERA_STORAGE_DIR: data/photos
+      PHOTO_UPLOAD_ENABLED: "false"
+    volumes:
+      - ./data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

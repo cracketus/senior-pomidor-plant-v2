@@ -204,6 +204,9 @@ jobs:
       - name: Check setup script
         run: shellcheck scripts/setup_raspberry_pi.sh
 
+      - name: Check staging management script
+        run: shellcheck deploy/rehearsal/edge-staging/manage.sh
+
       - name: Validate hardware Compose file
         run: docker compose config
 
@@ -212,6 +215,18 @@ jobs:
 
       - name: Validate integration Compose file
         run: docker compose -f docker-compose.integration.yml config
+
+      - name: Validate staging Compose file
+        env:
+          EDGE_IMAGE: ghcr.io/example/senior-pomidor-edge@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          STAGING_MQTT_HOST: mqtt.staging.example.invalid
+          STAGING_MQTT_PORT: "8883"
+          STAGING_MQTT_USERNAME: staging-ci-user
+          STAGING_MQTT_PASSWORD: staging-ci-password
+          STAGING_MQTT_TLS: "true"
+          STAGING_CORE_HTTP_URL: https://core.staging.example.invalid/api/v1/edge/telemetry
+          STAGING_TELEMETRY_UPLOAD_TOKEN: staging-ci-token
+        run: docker compose -f deploy/rehearsal/edge-staging/compose.yml config
 
       - name: Check Dockerfile
         uses: hadolint/hadolint-action@v3.1.0

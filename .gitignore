@@ -208,6 +208,9 @@ tempCodeRunnerFile.py
 
 # Local telemetry archive
 data/
+deploy/rehearsal/edge-staging/.deployment.env
+deploy/rehearsal/edge-staging/.previous-deployment.env
+deploy/rehearsal/edge-staging/data.backup-*/
 
 # PyPI configuration file
 .pypirc
