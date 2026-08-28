@@ -1,0 +1,105 @@
+name: Edge release candidate
+
+on:
+  workflow_run:
+    workflows:
+      - Quality
+    types:
+      - completed
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: edge-release-candidate-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/senior-pomidor-edge
+  SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+
+jobs:
+  publish:
+    name: Publish multi-arch release candidate
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      digest: ${{ steps.verify.outputs.digest }}
+      immutable_ref: ${{ steps.verify.outputs.immutable_ref }}
+      commit_sha: ${{ steps.verify.outputs.commit_sha }}
+    steps:
+      - name: Check out tested revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push release candidate
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.SOURCE_SHA }}
+          build-args: |
+            INSTALL_HARDWARE_DEPS=true
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ env.SOURCE_SHA }}
+            org.opencontainers.image.version=${{ env.SOURCE_SHA }}
+            org.opencontainers.image.title=Senior Pomidor Edge
+            org.opencontainers.image.licenses=MIT
+          provenance: mode=min
+          cache-from: type=gha,scope=edge-release-candidate
+          cache-to: type=gha,mode=max,scope=edge-release-candidate
+
+      - name: Verify registry digest, platforms, and revision labels
+        id: verify
+        shell: bash
+        env:
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python scripts/edge_image_release.py inspect \
+            --image "$IMAGE" \
+            --reference "$IMAGE:$SOURCE_SHA" \
+            --expected-commit "$SOURCE_SHA" \
+            --output edge-release-candidate.json \
+            --workflow-url "$WORKFLOW_URL"
+          digest="$(jq -r '.digest' edge-release-candidate.json)"
+          immutable_ref="$(jq -r '.immutable_ref' edge-release-candidate.json)"
+          commit_sha="$(jq -r '.commit_sha' edge-release-candidate.json)"
+          {
+            echo "digest=$digest"
+            echo "immutable_ref=$immutable_ref"
+            echo "commit_sha=$commit_sha"
+          } >>"$GITHUB_OUTPUT"
+          cat edge-release-candidate.json >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release-candidate metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-release-candidate-${{ env.SOURCE_SHA }}
+          path: edge-release-candidate.json
+          if-no-files-found: error
+          retention-days: 90

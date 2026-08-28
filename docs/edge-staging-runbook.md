@@ -36,11 +36,11 @@ unset GHCR_TOKEN
 
 ## Deploy and update
 
-Use the multi-architecture `linux/amd64` artifact produced by #99. Obtain both its immutable digest reference and full 40-character source commit SHA from that workflow. The image must carry the same SHA in `org.opencontainers.image.revision`; deployment fails closed otherwise.
+Use the multi-architecture `linux/amd64` artifact produced by #99. The package is `ghcr.io/cracketus/senior-pomidor-edge`; obtain its immutable digest reference and full 40-character source commit SHA from the `edge-release-candidate.json` artifact. The image must carry the same SHA in `org.opencontainers.image.revision`; deployment fails closed otherwise.
 
 ```bash
 cd /srv/rehearsal/edge-staging
-./manage.sh deploy ghcr.io/OWNER/IMAGE@sha256:64_HEX_DIGEST 40_HEX_COMMIT
+./manage.sh deploy ghcr.io/cracketus/senior-pomidor-edge@sha256:64_HEX_DIGEST 40_HEX_COMMIT
 ./manage.sh version
 ```
 
