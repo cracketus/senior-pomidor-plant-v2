@@ -371,6 +371,7 @@ Operations runbooks:
 - [Raspberry Pi 24/7 OS configuration](docs/raspberry-pi-24-7-os.md)
 - [systemd edge service guide](docs/edge-service.md)
 - [Monthly maintenance and planned restarts](docs/maintenance-runbook.md)
+- [Edge troubleshooting](docs/troubleshooting.md)
 - [Edge contract policy](docs/contracts.md)
 - [Core integration contract](docs/core-integration.md)
 - [Repository scope and prototype reference](docs/scope-and-prototype-reference.md)
