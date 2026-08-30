@@ -217,6 +217,41 @@ def test_formatter_isolates_health_errors() -> None:
     }
 
 
+def test_formatter_promotes_application_probe_errors_to_system_health_errors() -> None:
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+        }
+    )
+
+    payload = format_payload(
+        settings,
+        {
+            "system_health": {
+                "application": {
+                    "process_running": True,
+                    "process_uptime_seconds": 12,
+                    "systemd_service_name": "legacy.service",
+                    "systemd_available": False,
+                    "errors": [{"sensor": "application_systemd", "message": "systemctl probe timed out"}],
+                }
+            }
+        },
+    )
+
+    assert payload["system_health"]["application"] == {
+        "process_running": True,
+        "process_uptime_seconds": 12,
+        "systemd_service_name": "legacy.service",
+        "systemd_available": False,
+    }
+    assert payload["system_health"]["errors"] == [
+        {"sensor": "application_systemd", "message": "systemctl probe timed out"}
+    ]
+
+
 def test_formatter_preserves_storage_counts_bytes_and_status_types() -> None:
     settings = load_config(
         {

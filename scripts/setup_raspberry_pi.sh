@@ -5,7 +5,7 @@ MODE="hardware"
 AUTO_REBOOT="false"
 SKIP_START="false"
 INSTALL_WIFI_GUARD="false"
-INSTALL_WATCHDOG="false"
+INSTALL_WATCHDOG="default"
 REBOOT_NEEDED="false"
 DEVICE_ID_VALUE=""
 MQTT_HOST_VALUE=""
@@ -16,7 +16,7 @@ POD2_ENABLED_VALUE=""
 
 usage() {
   cat <<'EOF'
-Usage: scripts/setup_raspberry_pi.sh [--hardware|--mock] [--auto-reboot] [--install-watchdog] [--skip-start]
+Usage: scripts/setup_raspberry_pi.sh [--hardware|--mock] [--auto-reboot] [--install-watchdog|--no-watchdog] [--skip-start]
 
 Options:
   --hardware      Prepare Raspberry Pi real sensor mode and run docker-compose.yml. Default.
@@ -31,7 +31,9 @@ Options:
   --install-wifi-guard
                  Install a root systemd timer that backs up and restores NetworkManager Wi-Fi profiles.
   --install-watchdog
-                 Install the host supervisor and Raspberry Pi runtime hardware watchdog (hardware mode only).
+                 Explicitly install the host supervisor and Raspberry Pi runtime hardware watchdog.
+                 This is the default in hardware mode and is retained for compatibility.
+  --no-watchdog  Do not install the host supervisor (hardware mode opt-out).
   --skip-start    Prepare the host and .env, but do not start the container.
   -h, --help      Show this help.
 
@@ -95,6 +97,9 @@ while [ "$#" -gt 0 ]; do
     --install-watchdog)
       INSTALL_WATCHDOG="true"
       ;;
+    --no-watchdog)
+      INSTALL_WATCHDOG="false"
+      ;;
     --skip-start)
       SKIP_START="true"
       ;;
@@ -108,6 +113,17 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+
+if [ "$INSTALL_WATCHDOG" = "default" ]; then
+  if [ "$MODE" = "hardware" ]; then
+    INSTALL_WATCHDOG="true"
+  else
+    INSTALL_WATCHDOG="false"
+  fi
+fi
+
+[ "$MODE" = "hardware" ] || [ "$INSTALL_WATCHDOG" != "true" ] || \
+  die "--install-watchdog is supported only with --hardware"
 
 [ "$(uname -s)" = "Linux" ] || die "This setup script must run on Linux/Raspberry Pi OS."
 [ -f "docker-compose.yml" ] || die "Run this script from the repository root."
@@ -267,7 +283,6 @@ EOF
 
 install_edge_watchdog() {
   [ "$INSTALL_WATCHDOG" = "true" ] || return
-  [ "$MODE" = "hardware" ] || die "--install-watchdog is supported only with --hardware"
   if [ ! -r /proc/device-tree/model ] || ! grep -qi "Raspberry Pi" /proc/device-tree/model; then
     die "--install-watchdog requires Raspberry Pi hardware"
   fi

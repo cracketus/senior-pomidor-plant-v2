@@ -27,6 +27,16 @@ Inspect the latest telemetry payload too. `system_health.aggregate.reasons`
 explains the canonical indicator state, while `system_health.indicator` reports
 the requested and rendered LED state.
 
+For a canonical hardware deployment, inspect the host-produced supervisor file from both sides of the bind mount:
+
+```bash
+systemctl status senior-pomidor-watchdog.service senior-pomidor-edge.service
+sudo cat data/watchdog/status.json
+docker compose exec senior-pomidor-edge python -c 'import json; print(json.load(open("data/watchdog/status.json")))'
+```
+
+`watchdog.configured=false` is an intentional unsupervised deployment. A configured `unavailable` state means the status is missing, stale, malformed, or unreadable and produces `aggregate.state=DEGRADED` with `watchdog.unavailable`. Canonical Docker application telemetry has process uptime and resource metrics but no `systemd_*`; Grafana should show the aggregate state and reasons rather than inventing `systemd_available=false`.
+
 ## Indicator meanings
 
 | LED pattern | State | Meaning |

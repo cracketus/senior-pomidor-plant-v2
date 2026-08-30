@@ -10,15 +10,25 @@ Planned maintenance must begin with `python scripts/maintenance_event.py start -
 
 ## Installation
 
-Host actions and Raspberry Pi OS runtime hardware watchdog support are explicit opt-ins:
+Hardware setup installs the host supervisor and Raspberry Pi OS runtime hardware watchdog by default:
 
 ```bash
 ./scripts/setup_raspberry_pi.sh --hardware --install-watchdog
 ```
 
-Normal setup and mock Compose runs only produce heartbeat data; they never install a host supervisor or perform restart/reboot actions. Controlled reboot remains off unless explicitly enabled in `.env`.
+The explicit `--install-watchdog` form remains supported. Use `--no-watchdog` to opt a hardware installation out. Mock and ordinary Compose runs do not install a supervisor or perform restart/reboot actions. Controlled reboot remains off unless explicitly enabled in the checkout `.env`.
+
+Both host units and Docker Compose use the checkout `.env`; set `WATCHDOG_SERVICE_NAME=senior-pomidor-edge.service`. The container observes only atomic `data/watchdog/status.json` through the existing `data/` bind mount. Do not mount host DBus, the systemd API, or the Docker socket into it.
 
 Installation creates `data/watchdog/installed` before enabling the services. This marker records supervisor intent independently of `status.json`, so a supervisor that fails before its first poll is reported as configured but unavailable.
+
+Validate the producer/consumer boundary on the host:
+
+```bash
+systemctl status senior-pomidor-edge.service senior-pomidor-watchdog.service
+sudo cat data/watchdog/status.json
+docker compose exec senior-pomidor-edge python -c 'import json; print(json.load(open("data/watchdog/status.json")))'
+```
 
 ## Disable and manual recovery
 

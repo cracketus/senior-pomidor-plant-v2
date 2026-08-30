@@ -31,6 +31,30 @@ services:
       retries: 20
       start_period: 2s
 
+  host-watchdog:
+    build:
+      context: .
+      dockerfile: docker/integration/Dockerfile
+      target: host-watchdog
+    environment:
+      DEVICE_ID: edge-integration-100
+      POLL_INTERVAL_SECONDS: "15"
+      WATCHDOG_HEARTBEAT_FILE: /watchdog/heartbeat.json
+      WATCHDOG_STATUS_FILE: /watchdog/status.json
+      WATCHDOG_HISTORY_FILE: /watchdog/history.json
+      WATCHDOG_MAINTENANCE_FILE: /watchdog/maintenance.json
+      WATCHDOG_POLL_SECONDS: "1"
+      WATCHDOG_TIMEOUT_SECONDS: "45"
+      WATCHDOG_STARTUP_GRACE_SECONDS: "0"
+      WATCHDOG_SERVICE_NAME: senior-pomidor-edge.service
+      STATUS_PRODUCE_SECONDS: "22"
+      HEARTBEAT_WAIT_SECONDS: "60"
+    volumes:
+      - watchdog-data:/watchdog
+    depends_on:
+      integration-test:
+        condition: service_healthy
+
   integration-test:
     build:
       context: .
@@ -43,7 +67,7 @@ services:
       MQTT_PORT: "1883"
       CORE_RECEIVED_URL: http://mock-core:8080/received
       SPOOL_DB_PATH: /spool/telemetry-spool.sqlite3
-      TEST_TIMEOUT_SECONDS: "45"
+      TEST_TIMEOUT_SECONDS: "90"
     volumes:
       - telemetry-spool:/spool:ro
     networks:
@@ -68,7 +92,7 @@ services:
     environment:
       DEVICE_ID: edge-integration-100
       MOCK_SENSORS: "true"
-      POLL_INTERVAL_SECONDS: "5"
+      POLL_INTERVAL_SECONDS: "15"
       MQTT_HOST: mqtt-broker
       MQTT_PORT: "1883"
       MQTT_TOPIC_PREFIX: integration
@@ -80,7 +104,7 @@ services:
       TELEMETRY_SPOOL_PENDING_RETENTION_DAYS: "14"
       TELEMETRY_SPOOL_DELIVERED_RETENTION_DAYS: "1"
       TELEMETRY_SPOOL_MAX_PAYLOAD_BYTES: "4096"
-      TELEMETRY_SPOOL_CAPACITY_MB: "1300"
+      TELEMETRY_SPOOL_CAPACITY_MB: "4096"
       TELEMETRY_SPOOL_BATCH_SIZE: "1"
       TELEMETRY_SPOOL_RATE_LIMIT_PER_SECOND: "100"
       TELEMETRY_SPOOL_BUSY_TIMEOUT_MS: "5000"
@@ -90,15 +114,17 @@ services:
       TELEMETRY_SPOOL_MAX_ATTEMPTS: "3"
       LOCAL_STORAGE_DIR: /tmp/telemetry
       LOCAL_EVENT_DIR: /tmp/events
-      WATCHDOG_HEARTBEAT_FILE: /tmp/watchdog/heartbeat.json
-      WATCHDOG_STATUS_FILE: /tmp/watchdog/status.json
-      WATCHDOG_HISTORY_FILE: /tmp/watchdog/history.json
-      WATCHDOG_MAINTENANCE_FILE: /tmp/watchdog/maintenance.json
+      WATCHDOG_HEARTBEAT_FILE: /watchdog/heartbeat.json
+      WATCHDOG_STATUS_FILE: /watchdog/status.json
+      WATCHDOG_HISTORY_FILE: /watchdog/history.json
+      WATCHDOG_MAINTENANCE_FILE: /watchdog/maintenance.json
+      WATCHDOG_POLL_SECONDS: "1"
       CAMERA_ENABLED: "false"
       PHOTO_UPLOAD_ENABLED: "false"
       INDICATOR_ENABLED: "false"
     volumes:
       - telemetry-spool:/spool
+      - watchdog-data:/watchdog
     networks:
       - integration
     depends_on:
@@ -108,6 +134,8 @@ services:
         condition: service_healthy
       integration-test:
         condition: service_healthy
+      host-watchdog:
+        condition: service_started
 
 networks:
   integration:
@@ -115,3 +143,4 @@ networks:
 
 volumes:
   telemetry-spool:
+  watchdog-data:

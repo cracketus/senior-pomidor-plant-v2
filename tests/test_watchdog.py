@@ -33,6 +33,7 @@ def test_watchdog_health_distinguishes_unconfigured_from_stale_status(tmp_path) 
     (status_path.parent / WATCHDOG_INSTALLATION_MARKER).touch()
     assert read_watchdog_health(status_path, max_age_seconds=30, now=clock) == {
         "state": "unavailable",
+        "reason": "status_missing",
         "suppression": False,
         "configured": True,
     }
@@ -66,6 +67,41 @@ def test_watchdog_health_rejects_invalid_or_future_status_timestamps(tmp_path, t
     assert result["state"] == "unavailable"
     assert result["reason"] == "status_timestamp_invalid"
     assert result["configured"] is True
+
+
+@pytest.mark.parametrize("raw", ["not-json", "[]", "{}"])
+def test_watchdog_health_rejects_malformed_status(tmp_path, raw) -> None:
+    status_path = tmp_path / "status.json"
+    status_path.write_text(raw, encoding="utf-8")
+
+    result = read_watchdog_health(status_path)
+
+    assert result == {
+        "state": "unavailable",
+        "reason": "status_malformed",
+        "suppression": False,
+        "configured": True,
+    }
+
+
+def test_watchdog_health_reports_unreadable_status(tmp_path, monkeypatch) -> None:
+    status_path = tmp_path / "status.json"
+    status_path.touch()
+    original_read_text = type(status_path).read_text
+
+    def deny_status(path, *args, **kwargs):
+        if path == status_path:
+            raise PermissionError("denied")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(type(status_path), "read_text", deny_status)
+
+    assert read_watchdog_health(status_path) == {
+        "state": "unavailable",
+        "reason": "status_unreadable",
+        "suppression": False,
+        "configured": True,
+    }
 
 
 def test_watchdog_health_contains_malformed_counters(tmp_path) -> None:

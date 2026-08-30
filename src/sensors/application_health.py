@@ -39,9 +39,11 @@ def read(
     errors: list[dict[str, str]] = []
     _probe_metrics(metrics, errors, "application_process", read_process_metrics)
     if service_name:
-        metrics.update(read_systemd_service_metrics(service_name))
-    else:
-        metrics["systemd_available"] = False
+        systemd_metrics = read_systemd_service_metrics(service_name)
+        systemd_errors = systemd_metrics.pop("errors", [])
+        metrics.update(systemd_metrics)
+        if isinstance(systemd_errors, list):
+            errors.extend(systemd_errors)
 
     if errors:
         metrics["errors"] = errors
@@ -61,7 +63,11 @@ def read_process_metrics() -> dict[str, HealthValue]:
     }
 
 
-def read_systemd_service_metrics(service_name: str) -> dict[str, HealthValue]:
+def read_systemd_service_metrics(service_name: str) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "systemd_service_name": service_name,
+        "systemd_available": False,
+    }
     try:
         output = subprocess.run(
             [
@@ -77,30 +83,40 @@ def read_systemd_service_metrics(service_name: str) -> dict[str, HealthValue]:
             check=False,
         )
     except FileNotFoundError:
-        return {
-            "systemd_service_name": service_name,
-            "systemd_available": False,
-        }
+        return _systemd_error(base, "systemctl executable not found")
+    except subprocess.TimeoutExpired:
+        return _systemd_error(base, "systemctl probe timed out after 2 seconds")
+    except OSError as exc:
+        return _systemd_error(base, f"systemctl probe could not be started: {exc}")
 
-    metrics: dict[str, HealthValue] = {
-        "systemd_service_name": service_name,
-        "systemd_available": output.returncode == 0,
-    }
     if output.returncode != 0:
-        return metrics
+        detail = output.stderr.strip() or output.stdout.strip() or "no diagnostic output"
+        return _systemd_error(base, f"systemctl exited with code {output.returncode}: {detail}")
 
     properties = parse_systemctl_show(output.stdout)
     active_state = properties.get("ActiveState")
     sub_state = properties.get("SubState")
     main_pid = properties.get("MainPID")
-    if active_state:
-        metrics["systemd_active_state"] = active_state
-        metrics["systemd_service_active"] = active_state == "active"
-    if sub_state:
-        metrics["systemd_sub_state"] = sub_state
-    if main_pid and main_pid.isdigit():
-        metrics["systemd_main_pid"] = int(main_pid)
+    if not active_state or not sub_state or main_pid is None or not main_pid.isdigit():
+        base["systemd_available"] = True
+        return _systemd_error(base, "systemctl returned malformed service properties")
+
+    metrics: dict[str, Any] = {
+        **base,
+        "systemd_available": True,
+        "systemd_active_state": active_state,
+        "systemd_service_active": active_state == "active",
+        "systemd_sub_state": sub_state,
+        "systemd_main_pid": int(main_pid),
+    }
     return metrics
+
+
+def _systemd_error(metrics: dict[str, Any], message: str) -> dict[str, Any]:
+    return {
+        **metrics,
+        "errors": [{"sensor": "application_systemd", "message": message}],
+    }
 
 
 def parse_systemctl_show(text: str) -> dict[str, str]:
