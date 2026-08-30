@@ -89,6 +89,11 @@ Core consumers should:
 - Preserve raw payloads or enough metadata for diagnostics.
 - Treat `record_id`, `event_id`, and `photo_id` as idempotency keys.
 - Return the acknowledgement only after durable telemetry acceptance.
+- Evaluate `systemd_*` only when `system_health.application.systemd_service_name` is present.
+- Treat `system_health.watchdog.configured=false` as intentionally unsupervised and neutral.
+- Treat a configured fresh `healthy` watchdog as healthy, and `watchdog.state=unavailable` as degraded.
+- Use telemetry timestamp freshness for collector loss; use watchdog status freshness for canonical Docker supervisor health.
+- Render Grafana node state from `system_health.aggregate.state` and its machine-readable `reasons`, without synthesizing `systemd_available=false` when the field is absent.
 
 Core consumers should not assume the edge node performs state estimation beyond VPD metrics, weather enrichment, actuation decisions, anomaly classification, dashboard storage, or AI/VLM analysis.
 

@@ -105,7 +105,7 @@ def test_remote_outage_is_ignored_when_acquisition_is_suspended() -> None:
 
 def test_absent_optional_watchdog_is_neutral() -> None:
     value = healthy()
-    value["watchdog"] = {"state": "unavailable", "suppression": False, "configured": False}
+    value["watchdog"] = {"configured": False}
 
     assert aggregate_edge_health(value).state is EdgeHealthState.OK
 

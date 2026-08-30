@@ -7,7 +7,7 @@ After=network-online.target docker.service
 [Service]
 Type=exec
 WorkingDirectory=/opt/senior-pomidor-plant-v2
-EnvironmentFile=-/etc/senior-pomidor/edge.env
+EnvironmentFile=-/opt/senior-pomidor-plant-v2/.env
 ExecStart=/usr/bin/docker compose up --no-build senior-pomidor-edge
 ExecStop=/usr/bin/docker compose stop senior-pomidor-edge
 Restart=always

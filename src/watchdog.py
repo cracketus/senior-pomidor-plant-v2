@@ -496,10 +496,42 @@ def read_watchdog_health(
     max_age_seconds: float = 30.0,
     now: Callable[[], datetime] = utc_now,
 ) -> dict[str, Any]:
-    status = read_json(path)
     configured = watchdog_is_configured(path)
-    if status is None:
-        return {"state": "unavailable", "suppression": False, "configured": configured}
+    status_path = Path(path)
+    try:
+        raw = status_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        result = {"state": "unavailable", "suppression": False, "configured": configured}
+        if configured:
+            result["reason"] = "status_missing"
+        return result
+    except OSError:
+        return {
+            "state": "unavailable",
+            "reason": "status_unreadable",
+            "suppression": False,
+            "configured": configured,
+        }
+    try:
+        status = json.loads(raw)
+    except (TypeError, ValueError):
+        status = None
+    if not isinstance(status, dict):
+        return {
+            "state": "unavailable",
+            "reason": "status_malformed",
+            "suppression": False,
+            "configured": True,
+        }
+
+    watchdog_state = status.get("watchdog_state")
+    if not isinstance(watchdog_state, str) or not watchdog_state.strip():
+        return {
+            "state": "unavailable",
+            "reason": "status_malformed",
+            "suppression": False,
+            "configured": True,
+        }
 
     updated = parse_utc(status.get("updated_at_utc"))
     current = now()
@@ -520,7 +552,7 @@ def read_watchdog_health(
         }
 
     return {
-        "state": status.get("watchdog_state", "unknown"),
+        "state": watchdog_state,
         "reason": status.get("reason"),
         "result": status.get("result"),
         "suppression": status.get("suppression") is True,

@@ -180,7 +180,7 @@ Inspect the application health fields under `system_health.application`:
 
 - `process_running` should be `true`.
 - `process_uptime_seconds` should increase between telemetry ticks unless the collector restarted.
-- `systemd_service_active` should be `true` when `SERVICE_NAME` is configured and the edge client runs as a systemd service.
+- Canonical Docker telemetry should omit `systemd_*`; verify the fresh `system_health.watchdog` block instead. For a supported direct-host/legacy launch with `SERVICE_NAME`, `systemd_service_active` should be `true`.
 - The payload-level `heartbeat_utc` should advance every telemetry interval while ingestion is fresh.
 
 If `system_health.errors` contains `rpi_recent_io_errors`, the container cannot read the kernel journal. Check the host directly:

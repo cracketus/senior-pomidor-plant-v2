@@ -101,7 +101,8 @@ Important variables:
 - `WIFI_INTERFACE`, `WIFI_PROFILE_DIR`, `WIFI_PREFERRED_PROFILE`: Raspberry Pi Wi-Fi health probe settings.
 - `NETWORK_CHECK_HOST`, `NETWORK_DNS_CHECK_HOST`, `NETWORK_RECOVERY_STATUS_FILE`: network reachability and host recovery status settings.
 - `DISK_USAGE_PATH`: filesystem path used by Raspberry Pi OS disk health probes.
-- `SERVICE_NAME`: optional systemd service name used for application service health checks.
+- `SERVICE_NAME`: direct-host/legacy-only systemd service probe. Leave it unset in Docker; canonical Docker supervisor health comes from the host watchdog.
+- `WATCHDOG_SERVICE_NAME`: host service restarted by the watchdog; canonical hardware value is `senior-pomidor-edge.service`.
 - `INDICATOR_ENABLED`, `INDICATOR_BACKEND`, `INDICATOR_*_PIN`, and `INDICATOR_*_HZ`: optional three-LED health indicator controls. It is disabled by default; verify the board and resistors before enabling GPIO.
 - `ADS1115_*_DRY_READING` and `ADS1115_*_WET_READING`: raw ADS1115 soil moisture calibration values from `AnalogIn.value`.
 
@@ -571,13 +572,13 @@ To install the optional host-level Wi-Fi guard that backs up `.nmconnection` fil
 ./scripts/setup_raspberry_pi.sh --hardware --install-wifi-guard
 ```
 
-For bounded host-side recovery from a killed or frozen collector, explicitly install the layered watchdog:
+Hardware setup installs the layered host watchdog and both systemd units by default:
 
 ```bash
 ./scripts/setup_raspberry_pi.sh --hardware --install-watchdog
 ```
 
-This installs the edge and supervisor systemd units plus the Raspberry Pi runtime hardware watchdog. Service restart is bounded; controlled reboot is disabled unless `WATCHDOG_ALLOW_REBOOT=true`. Mock and ordinary Docker setup only expose the heartbeat and never perform host actions. See the [layered watchdog runbook](docs/edge-watchdog-runbook.md) for budgets, suppression, disable, and manual recovery.
+`--install-watchdog` remains as an explicit compatible flag. Use `--no-watchdog` for an intentionally unsupervised hardware deployment. Mock and ordinary Compose deployments remain unsupervised. The container receives only the atomic files under bind-mounted `data/`; it receives no host DBus, systemd API, or Docker socket. Service restart is bounded, and controlled reboot is disabled unless `WATCHDOG_ALLOW_REBOOT=true`. See the [layered watchdog runbook](docs/edge-watchdog-runbook.md) for budgets, suppression, disable, and manual recovery.
 
 ### If a Sensor Is Not Detected
 
@@ -616,8 +617,8 @@ This installs the edge and supervisor systemd units plus the Raspberry Pi runtim
 - `system_health.network.telemetry_queue_*` and `photo_queue_*` report locally queued unsent telemetry and pending photo upload files.
 - `system_health.network.interface_*_error_count` and `interface_*_drop_count` expose interface packet error/drop counters when the OS provides them.
 - `system_health.network.last_recovery_exit_code` comes from the optional host Wi-Fi guard status file. `0` means the last guard run completed successfully; non-zero values need host-side investigation.
-- `system_health.application` reports process liveness and uptime. When `SERVICE_NAME` is configured and systemd is available, it also reports service active/substate and main PID.
-- `system_health.watchdog` reports the independent supervisor state, recovery counters, last healthy persisted heartbeat, and suppression status.
+- `system_health.application` always reports container process liveness, uptime, memory, and CPU. A supported direct-host/legacy launch may set `SERVICE_NAME` to add a bounded systemd probe; Docker leaves it unset and does not emit a false `systemd_available=false` signal.
+- `system_health.watchdog` is the canonical Docker supervisor contract. `configured=false` is neutral; a fresh `healthy` state is OK; configured missing, stale, malformed, or unreadable status is `unavailable` and degrades aggregate health. Recovery, suppression, and maintenance retain fail-safe priority.
 - `system_health.aggregate` reports the canonical versioned edge state and stable machine-readable reasons. `system_health.indicator` reports the requested/rendered state and any isolated GPIO failure.
 
 ### Reading Error Fields

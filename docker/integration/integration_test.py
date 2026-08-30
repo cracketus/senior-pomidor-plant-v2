@@ -42,6 +42,13 @@ def wait_for_http_payload(url: str, record_id: str, deadline: float) -> dict[str
     raise AssertionError(f"timed out waiting for HTTP payload: {last_error}")
 
 
+def fetch_http_payloads(url: str) -> list[dict[str, Any]]:
+    with urllib.request.urlopen(url, timeout=2) as response:
+        body = json.load(response)
+    payloads = body.get("payloads", []) if isinstance(body, dict) else []
+    return [payload for payload in payloads if isinstance(payload, dict)]
+
+
 def wait_for_delivered(db_path: str, record_id: str, deadline: float) -> None:
     last_state = "database not available"
     while time.monotonic() < deadline:
@@ -140,6 +147,9 @@ def main() -> None:
         if not subscribed:
             raise AssertionError("timed out waiting for MQTT subscription acknowledgement")
 
+        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+        validator = Draft202012Validator(schema)
+
         remaining = max(0.1, deadline - time.monotonic())
         try:
             topic, mqtt_payload = messages.get(timeout=remaining)
@@ -148,18 +158,60 @@ def main() -> None:
         assert topic == expected_topic, f"expected topic {expected_topic}, got {topic}"
         record_id = mqtt_payload.get("record_id")
         assert isinstance(record_id, str) and record_id, "MQTT payload has no record_id"
-
         http_payload = wait_for_http_payload(required_env("CORE_RECEIVED_URL"), record_id, deadline)
-        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-        validator = Draft202012Validator(schema)
         validator.validate(mqtt_payload)
         validator.validate(http_payload)
-        assert mqtt_payload["device_id"] == device_id
-        assert http_payload["device_id"] == device_id
-        assert_mock_values(mqtt_payload)
         assert mqtt_payload == http_payload, "MQTT and HTTP payloads differ"
-        wait_for_delivered(required_env("SPOOL_DB_PATH"), record_id, deadline)
-        print(f"integration-test: record {record_id} delivered over MQTT and HTTP", flush=True)
+        assert mqtt_payload["device_id"] == device_id
+        assert_mock_values(mqtt_payload)
+
+        observed_states: list[tuple[int, str, str]] = []
+        while time.monotonic() < deadline:
+            try:
+                core_payloads = fetch_http_payloads(required_env("CORE_RECEIVED_URL"))
+            except (OSError, ValueError, TypeError):
+                time.sleep(0.2)
+                continue
+            ordered = sorted(core_payloads, key=lambda payload: int(payload.get("sequence", 0)))
+            observed_states = []
+            healthy_sequence: int | None = None
+            for payload in ordered:
+                validator.validate(payload)
+                assert_mock_values(payload)
+                system_health = payload["system_health"]
+                application = system_health["application"]
+                watchdog = system_health["watchdog"]
+                aggregate = system_health["aggregate"]
+                sequence = int(payload.get("sequence", 0))
+                watchdog_state = str(watchdog.get("state"))
+                aggregate_state = str(aggregate.get("state"))
+                observed_states.append((sequence, watchdog_state, aggregate_state))
+                assert application["process_running"] is True
+                assert application["process_uptime_seconds"] >= 0
+                assert "systemd_available" not in application
+                assert "systemd_service_name" not in application
+
+                if watchdog_state == "healthy" and aggregate_state == "OK":
+                    assert watchdog.get("configured") is True
+                    assert aggregate["reasons"] == []
+                    healthy_sequence = sequence
+                elif healthy_sequence is not None and sequence > healthy_sequence and watchdog_state == "unavailable":
+                    assert watchdog.get("configured") is True
+                    assert aggregate_state == "DEGRADED"
+                    assert aggregate["reasons"] == ["watchdog.unavailable"]
+                    final_record_id = payload.get("record_id")
+                    assert isinstance(final_record_id, str) and final_record_id
+                    wait_for_delivered(required_env("SPOOL_DB_PATH"), final_record_id, deadline)
+                    print(
+                        f"integration-test: record {final_record_id} proved healthy-to-unavailable watchdog transition",
+                        flush=True,
+                    )
+                    return
+            time.sleep(0.2)
+
+        raise AssertionError(
+            f"timed out before configured watchdog became unavailable; observed states: {observed_states}"
+        )
     finally:
         client.disconnect()
         client.loop_stop()

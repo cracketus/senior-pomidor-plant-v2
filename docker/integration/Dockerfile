@@ -21,3 +21,15 @@ COPY docker/integration/integration_test.py ./integration_test.py
 COPY schemas/edge-telemetry-v2.schema.json /schemas/edge-telemetry-v2.schema.json
 
 CMD ["python", "integration_test.py"]
+
+
+FROM python:3.11-slim-bookworm AS host-watchdog
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+COPY src ./src
+COPY docker/integration/host_watchdog_fixture.py ./host_watchdog_fixture.py
+
+CMD ["python", "host_watchdog_fixture.py"]

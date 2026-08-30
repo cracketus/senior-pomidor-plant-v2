@@ -33,15 +33,36 @@ def test_edge_service_restart_uses_prebuilt_image() -> None:
     assert update_build < update_restart
 
 
-def test_setup_requires_explicit_watchdog_install_flag() -> None:
+def test_hardware_setup_installs_watchdog_by_default_with_explicit_opt_out() -> None:
     setup = (ROOT / "scripts/setup_raspberry_pi.sh").read_text(encoding="utf-8")
     assert "--install-watchdog)" in setup
+    assert "--no-watchdog)" in setup
+    assert 'if [ "$INSTALL_WATCHDOG" = "default" ]; then' in setup
+    assert 'if [ "$MODE" = "hardware" ]; then' in setup
     assert '[ "$INSTALL_WATCHDOG" = "true" ] || return' in setup
     assert "--install-watchdog is supported only with --hardware" in setup
     assert "RuntimeWatchdogSec=30s" in setup
     assert 'ensure_line "$config_file" "dtparam=watchdog=on"' in setup
     assert 'grep -qi "Raspberry Pi" /proc/device-tree/model' in setup
     assert "systemctl enable senior-pomidor-edge.service senior-pomidor-watchdog.service" in setup
+
+
+def test_edge_and_watchdog_units_use_checkout_env_only() -> None:
+    edge = (ROOT / "deploy/systemd/senior-pomidor-edge.service").read_text(encoding="utf-8")
+    watchdog = (ROOT / "deploy/systemd/senior-pomidor-watchdog.service").read_text(encoding="utf-8")
+
+    expected = "EnvironmentFile=-/opt/senior-pomidor-plant-v2/.env"
+    assert expected in edge
+    assert expected in watchdog
+    assert "/etc/senior-pomidor/edge.env" not in edge
+
+
+def test_canonical_container_has_no_host_supervisor_control_socket() -> None:
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+
+    assert "/var/run/docker.sock" not in compose
+    assert "/run/docker.sock" not in compose
+    assert "/run/dbus" not in compose
 
 
 def test_setup_prepares_operator_owned_maintenance_directory_before_enabling_services() -> None:

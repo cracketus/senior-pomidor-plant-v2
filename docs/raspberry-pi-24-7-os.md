@@ -98,7 +98,7 @@ chmod +x scripts/setup_raspberry_pi.sh
   --auto-reboot
 ```
 
-The script installs host packages, installs Docker when missing, enables I2C and 1-Wire, creates `.env` from `.env.example`, sets `MOCK_SENSORS=false`, builds the Docker image, and starts `senior-pomidor-edge`.
+The script installs host packages, installs Docker when missing, enables I2C, 1-Wire, and the hardware watchdog, creates the single checkout `.env` from `.env.example`, sets `MOCK_SENSORS=false`, builds the Docker image, and installs the edge and host-watchdog systemd units. Use `--no-watchdog` only for an intentionally unsupervised hardware node.
 
 If hardware interfaces were enabled during the run, a reboot is required before they appear. After reboot, run the setup command again from the repository root.
 

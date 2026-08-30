@@ -152,7 +152,7 @@ def _required_data_present(
             bool(network),
             "process_running" in application,
             all(key in spool for key in ("status", "disk_status")),
-            "state" in watchdog,
+            watchdog.get("configured") is False or "state" in watchdog,
         )
     )
     if application.get("systemd_service_name"):
