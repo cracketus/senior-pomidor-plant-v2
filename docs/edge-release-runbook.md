@@ -146,7 +146,7 @@ docker compose exec senior-pomidor-edge python scripts/maintenance_event.py comp
 test ! -e data/watchdog/maintenance.json && echo "maintenance hold cleared"
 ```
 
-Canonical Docker telemetry should have `process_running=true`, no `systemd_*`, healthy watchdog, and aggregate `OK`. If Grafana shows `application/systemd=UNKNOWN` or `overall=UNKNOWN`, the remaining fix is in the server evaluator/dashboard: absent optional systemd fields must not become `UNKNOWN`.
+Canonical Docker telemetry should have `service_manager=none`, `process_running=true`, no `systemd_*`, healthy watchdog, and aggregate `OK`. If Grafana shows `application/systemd=UNKNOWN` or `overall=UNKNOWN`, the remaining fix is in the server evaluator/dashboard: process-only application health must not become `UNKNOWN`.
 
 ## Rollback
 
