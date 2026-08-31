@@ -46,6 +46,34 @@
         },
         "application": {
           "type": "object",
+          "properties": {
+            "service_manager": {
+              "type": "string",
+              "enum": ["none", "systemd"]
+            },
+            "process_running": { "type": "boolean" }
+          },
+          "allOf": [
+            {
+              "if": {
+                "required": ["service_manager"],
+                "properties": { "service_manager": { "const": "none" } }
+              },
+              "then": {
+                "required": ["process_running"],
+                "not": {
+                  "anyOf": [
+                    { "required": ["systemd_service_name"] },
+                    { "required": ["systemd_available"] },
+                    { "required": ["systemd_active_state"] },
+                    { "required": ["systemd_service_active"] },
+                    { "required": ["systemd_sub_state"] },
+                    { "required": ["systemd_main_pid"] }
+                  ]
+                }
+              }
+            }
+          ],
           "additionalProperties": {
             "type": ["string", "number", "integer", "boolean"]
           }

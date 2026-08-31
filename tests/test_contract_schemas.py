@@ -75,6 +75,28 @@ def test_formatted_telemetry_validates_against_schema() -> None:
     _validate(_read_json(SCHEMA_DIR / "edge-telemetry-v2.schema.json"), payload)
 
 
+def test_schema_accepts_process_only_application_and_rejects_contradictory_systemd() -> None:
+    schema = _read_json(SCHEMA_DIR / "edge-telemetry-v2.schema.json")
+    payload = _read_json(FIXTURE_DIR / "edge-telemetry-v2.valid.json")
+    application = payload["system_health"].setdefault("application", {})
+    application.clear()
+    application.update({"service_manager": "none", "process_running": True})
+    _validate(schema, payload)
+
+    application["systemd_available"] = False
+    errors = sorted(Draft202012Validator(schema).iter_errors(payload), key=lambda error: error.path)
+    assert errors
+
+
+def test_schema_accepts_fault_isolated_process_probe_failure() -> None:
+    schema = _read_json(SCHEMA_DIR / "edge-telemetry-v2.schema.json")
+    payload = _read_json(FIXTURE_DIR / "edge-telemetry-v2.valid.json")
+    payload["system_health"]["application"] = {}
+    payload["system_health"]["errors"] = [{"sensor": "application_process", "message": "process probe failed"}]
+
+    _validate(schema, payload)
+
+
 def test_lifecycle_event_validates_against_schema() -> None:
     settings = load_config(
         {

@@ -33,6 +33,8 @@ def read(
                     "systemd_main_pid": 1234,
                 }
             )
+        else:
+            mock_metrics["service_manager"] = "none"
         return mock_metrics
 
     metrics: dict[str, Any] = {}
@@ -44,6 +46,14 @@ def read(
         metrics.update(systemd_metrics)
         if isinstance(systemd_errors, list):
             errors.extend(systemd_errors)
+    else:
+        # Canonical Docker deployments are intentionally process-supervised by
+        # the host watchdog and have no systemd/DBus access in the container.
+        # Publish the discriminator only with positive process evidence. If the
+        # isolated probe failed, its metrics remain absent and Core can report
+        # UNKNOWN without rejecting the otherwise valid telemetry payload.
+        if isinstance(metrics.get("process_running"), bool):
+            metrics["service_manager"] = "none"
 
     if errors:
         metrics["errors"] = errors

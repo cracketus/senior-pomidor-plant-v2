@@ -71,8 +71,30 @@ def test_application_health_without_supervisor_keeps_process_metrics_only(monkey
 
     assert result["process_running"] is True
     assert result["process_uptime_seconds"] == 42
+    assert result["service_manager"] == "none"
     assert "systemd_available" not in result
     assert "systemd_service_name" not in result
+
+
+def test_mock_application_health_without_supervisor_identifies_process_manager() -> None:
+    result = application_health.read(mock=True)
+
+    assert result["service_manager"] == "none"
+    assert result["process_running"] is True
+    assert all(not key.startswith("systemd_") for key in result)
+
+
+def test_process_probe_failure_omits_process_only_discriminator(monkeypatch) -> None:
+    def fail_process_probe():
+        raise RuntimeError("process probe failed")
+
+    monkeypatch.setattr(application_health, "read_process_metrics", fail_process_probe)
+
+    result = application_health.read()
+
+    assert "service_manager" not in result
+    assert "process_running" not in result
+    assert result["errors"] == [{"sensor": "application_process", "message": "process probe failed"}]
 
 
 def test_application_health_reports_missing_systemctl_as_probe_error(monkeypatch) -> None:

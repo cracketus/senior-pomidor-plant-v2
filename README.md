@@ -617,7 +617,7 @@ Hardware setup installs the layered host watchdog and both systemd units by defa
 - `system_health.network.telemetry_queue_*` and `photo_queue_*` report locally queued unsent telemetry and pending photo upload files.
 - `system_health.network.interface_*_error_count` and `interface_*_drop_count` expose interface packet error/drop counters when the OS provides them.
 - `system_health.network.last_recovery_exit_code` comes from the optional host Wi-Fi guard status file. `0` means the last guard run completed successfully; non-zero values need host-side investigation.
-- `system_health.application` always reports container process liveness, uptime, memory, and CPU. A supported direct-host/legacy launch may set `SERVICE_NAME` to add a bounded systemd probe; Docker leaves it unset and does not emit a false `systemd_available=false` signal.
+- `system_health.application` always reports container process liveness, uptime, memory, and CPU. Canonical Docker telemetry identifies this as `service_manager="none"` and emits no `systemd_*` fields. A supported direct-host/legacy launch may set `SERVICE_NAME` to add a bounded systemd probe.
 - `system_health.watchdog` is the canonical Docker supervisor contract. `configured=false` is neutral; a fresh `healthy` state is OK; configured missing, stale, malformed, or unreadable status is `unavailable` and degrades aggregate health. Recovery, suppression, and maintenance retain fail-safe priority.
 - `system_health.aggregate` reports the canonical versioned edge state and stable machine-readable reasons. `system_health.indicator` reports the requested/rendered state and any isolated GPIO failure.
 

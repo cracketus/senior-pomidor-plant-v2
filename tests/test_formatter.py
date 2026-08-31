@@ -82,6 +82,26 @@ def test_formatter_marks_disabled_pod() -> None:
     assert payload["pods"]["pod_2"] == {"enabled": False, "metrics": {}, "errors": []}
 
 
+def test_formatter_preserves_process_only_service_manager() -> None:
+    settings = load_config(
+        {
+            "MQTT_HOST": "core.local",
+            "HTTP_ENABLED": "true",
+            "CORE_HTTP_URL": "https://core.example/telemetry",
+            "DEVICE_ID": "edge-01",
+        }
+    )
+    payload = format_payload(
+        settings,
+        {"system_health": {"application": {"service_manager": "none", "process_running": True}}},
+    )
+
+    assert payload["system_health"]["application"] == {
+        "service_manager": "none",
+        "process_running": True,
+    }
+
+
 def test_formatter_adds_vpd_metrics_to_each_enabled_pod() -> None:
     settings = load_config(
         {
