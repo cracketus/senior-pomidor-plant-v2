@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta
       name="description"
-      content="Senior Pomidor is a balcony plant monitoring project with edge telemetry, dashboarding, research notes, and an open dataset roadmap."
+      content="Senior Pomidor is an open-source embodied AI research project building a hardware-independent decision and control layer for agriculture."
     >
-    <title>Senior Pomidor</title>
+    <title>Senior Pomidor · Tomato Brain</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -16,15 +16,15 @@
         <div class="mark" aria-hidden="true">&#x1f345;</div>
         <h1 id="title">Senior Pomidor</h1>
         <p class="summary">
-          Balcony plant monitoring from sensor edge node to live observability,
-          research notes, and a future public dataset.
+          An open-source Tomato Brain for agriculture: a hardware-independent embodied AI layer
+          that turns real-world observations into explainable, safe actions.
         </p>
       </section>
 
       <nav class="links" aria-label="Project links">
         <a class="link" href="https://github.com/cracketus/senior-pomidor-server">
-          <span class="label"><span class="icon" aria-hidden="true">&#x1f331;</span>Senior Pomidor</span>
-          <span class="meta">Server repository</span>
+          <span class="label"><span class="icon" aria-hidden="true">&#x1f331;</span>Tomato Brain / Core</span>
+          <span class="meta">Public repository</span>
         </a>
         <a class="link" href="/contacts/">
           <span class="label"><span class="icon" aria-hidden="true">&#x1f4c7;</span>Contacts</span>
@@ -47,10 +47,14 @@
       <section class="about" id="about" aria-labelledby="about-title">
         <h2 id="about-title">About</h2>
         <p>
-          Senior Pomidor is an edge telemetry project for tracking tomato plant
-          conditions with soil, air, light, leaf temperature, power, and camera
-          signals. This page is a small public index for the project and its
-          upcoming research outputs.
+          Senior Pomidor started as a real tomato-growing experiment on a Vienna balcony,
+          but the goal is broader: build an open, reproducible AI core for acting in the
+          physical world. The system separates observation, state estimation, prediction,
+          decision-making, safety guardrails, execution, and evaluation. It is designed to
+          work with different sensors and existing farm systems instead of a closed hardware
+          stack, while keeping the full state → decision → action → outcome chain traceable
+          for research and replay. AI models can support analysis and prediction; physical
+          authority stays explicit, bounded, and testable.
         </p>
       </section>
     </main>
