@@ -8,7 +8,7 @@ def test_public_page_links_to_live_dashboard() -> None:
 
     assert "Live Dashboard" in index
     assert "Grafana Cloud" in index
-    assert "https://stoutibex436.grafana.net/public-dashboards/a2351e3f708642dfa676d7c4c9683a00" in index
+    assert "https://stoutibex436.grafana.net/public-dashboards/913e33e032334becb3b01504373a364d" in index
     assert "container" not in index.lower()
 
 
