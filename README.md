@@ -675,3 +675,7 @@ Schema-valid example payloads are available in [examples](examples/):
 - [Telemetry payload](examples/edge-telemetry-v2.example.json)
 - [Lifecycle event payload](examples/edge-event-v1.example.json)
 - [Photo metadata payload](examples/edge-photo-v1.example.json)
+
+## Tomato Brain Map implementation preparation
+
+[Producer compatibility handoff](docs/tomato-brain-map-handoff.md). Accepted design; runtime acceptance is tracked separately.
