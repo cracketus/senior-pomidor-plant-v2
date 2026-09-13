@@ -100,7 +100,7 @@ configured endpoint and broker listener:
 
 ```bash
 grep -E '^(MQTT_HOST|MQTT_PORT|MQTT_TLS)=' .env
-nc -vz MQTT_HOST 1883
+nc -vz MQTT_HOST MQTT_PORT
 ```
 
 On the broker host:
