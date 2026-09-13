@@ -905,8 +905,12 @@ class SpoolRepository:
         last_resolution = self.connection.execute(
             "SELECT resolved_at,reason FROM dead_letter_resolutions ORDER BY resolved_at DESC,rowid DESC LIMIT 1"
         ).fetchone()
+        current_error = self.connection.execute(
+            "SELECT last_error_code,last_error,last_attempt_at FROM records "
+            "WHERE state IN ('pending','in_flight','dead_letter') AND last_error_code IS NOT NULL "
+            "ORDER BY last_attempt_at DESC,rowid DESC LIMIT 1"
+        ).fetchone()
         last_success = self.get_metadata("last_successful_delivery_at") or None
-        last_error_code = self.get_metadata("last_delivery_error_code") or None
         return {
             "status": state,
             "disk_status": disk_state,
@@ -932,9 +936,9 @@ class SpoolRepository:
             "last_delivery_result": self.get_metadata("last_delivery_result") or None,
             "last_delivery_at_utc": last_success,
             "last_successful_delivery_at_utc": last_success,
-            "last_error_code": last_error_code,
-            "last_error_detail": self.get_metadata("last_delivery_error_detail") or None,
-            "last_error_at_utc": self.get_metadata("last_delivery_error_at") or None,
+            "last_error_code": None if current_error is None else current_error["last_error_code"],
+            "last_error_detail": None if current_error is None else current_error["last_error"],
+            "last_error_at_utc": None if current_error is None else current_error["last_attempt_at"],
             "write_failure_count": int(self.get_metadata("write_failure_total") or 0),
             "written_total": written_total,
             "success_total": success_total,
