@@ -6,7 +6,7 @@ transport errors.
 
 ## Quick triage
 
-Run these commands from the repository root on the edge host:
+Run these commands from the repository root:
 
 ```bash
 docker compose ps
@@ -18,7 +18,7 @@ The spool status is the local source of truth for delivery. Check:
 
 - `status`, `pending_count`, `in_flight_count`, and `backlog_count` for current queue state;
 - `dead_letter_count` for records that will not be retried automatically;
-- `last_error_code` and `last_error_detail` for the most recent failed attempt;
+- `last_error_code`, `last_error_detail`, and `last_error_at_utc` for the most recent unresolved delivery error among pending, in-flight, or dead-letter records; these fields clear when no unresolved record retains an error, while historical failures remain in delivery attempt history;
 - `last_successful_delivery_at_utc`, which should advance after HTTP acknowledgement;
 - `worker_state` (`running`) and `worker_last_error`;
 - `disk_status` and `free_space_bytes` for storage pressure.
@@ -100,7 +100,7 @@ configured endpoint and broker listener:
 
 ```bash
 grep -E '^(MQTT_HOST|MQTT_PORT|MQTT_TLS)=' .env
-nc -vz MQTT_HOST MQTT_PORT
+nc -vz MQTT_HOST 8000
 ```
 
 On the broker host:
