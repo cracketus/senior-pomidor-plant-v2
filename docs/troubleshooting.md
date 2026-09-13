@@ -6,7 +6,7 @@ transport errors.
 
 ## Quick triage
 
-Run these commands from the repository root:
+Run these commands from the repository root on the edge host:
 
 ```bash
 docker compose ps
@@ -100,7 +100,7 @@ configured endpoint and broker listener:
 
 ```bash
 grep -E '^(MQTT_HOST|MQTT_PORT|MQTT_TLS)=' .env
-nc -vz MQTT_HOST 8000
+nc -vz MQTT_HOST 1883
 ```
 
 On the broker host:
