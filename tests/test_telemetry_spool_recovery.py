@@ -121,17 +121,17 @@ def test_accepted_recovery_clears_current_transport_error(tmp_path) -> None:
 
 def test_successful_record_does_not_hide_another_unresolved_error(tmp_path) -> None:
     spool = _repository(tmp_path)
-    failed = spool.enqueue(_payload("2026-09-13T17:00:00Z"))
-    successful = spool.enqueue(_payload("2026-09-13T17:01:00Z"))
+    successful = spool.enqueue(_payload("2026-09-13T17:00:00Z"))
+    unresolved = spool.enqueue(_payload("2026-09-13T17:01:00Z"))
 
-    # Claim only the older record first and leave it pending with a transport error.
-    assert _claim_one(spool) == successful.record_id
+    # claim_batch prioritizes the newest record. Leave it pending with an error.
+    assert _claim_one(spool) == unresolved.record_id
     assert (
         spool.complete_attempt(
-            successful.record_id,
+            unresolved.record_id,
             DeliveryResult(
                 DeliveryStatus.RETRY,
-                successful.record_id,
+                unresolved.record_id,
                 detail="connection reset",
                 error_code=DeliveryErrorCode.TRANSPORT_ERROR.value,
             ),
@@ -142,11 +142,11 @@ def test_successful_record_does_not_hide_another_unresolved_error(tmp_path) -> N
 
     # Deliver the other record successfully. Its success must not clear the
     # unresolved error belonging to the still-pending record.
-    assert _claim_one(spool) == failed.record_id
+    assert _claim_one(spool) == successful.record_id
     assert (
         spool.complete_attempt(
-            failed.record_id,
-            DeliveryResult(DeliveryStatus.ACCEPTED, failed.record_id),
+            successful.record_id,
+            DeliveryResult(DeliveryStatus.ACCEPTED, successful.record_id),
         )
         == "delivered"
     )
