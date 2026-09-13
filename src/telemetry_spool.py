@@ -621,6 +621,9 @@ class SpoolRepository:
                 if previous_count > 0 or recovery_count > 0:
                     self.increment_counter("replayed_total")
                 self.set_metadata("last_successful_delivery_at", utc_text(now))
+                self.set_metadata("last_delivery_error_code", "")
+                self.set_metadata("last_delivery_error_detail", "")
+                self.set_metadata("last_delivery_error_at", "")
                 remaining = int(
                     connection.execute(
                         "SELECT COUNT(*) FROM records WHERE state IN ('pending','in_flight')"
