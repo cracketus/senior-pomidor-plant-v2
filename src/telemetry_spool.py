@@ -1023,14 +1023,21 @@ class DeliveryWorker:
 
     def deliver_once(self, repository: SpoolRepository | None = None) -> int:
         repository = repository or self.repository
+        if self._stop.is_set():
+            return 0
         records = repository.claim_batch(self.batch_size)
         remaining = [record.record_id for record in records]
+        processed = 0
         try:
             for record in records:
+                if self._stop.is_set():
+                    break
+                self._wait_for_rate_limit()
+                if self._stop.is_set():
+                    break
                 started = repository.start_attempt(record.record_id)
                 with suppress(Exception):
                     self.mqtt_sender.publish(record.payload)
-                self._wait_for_rate_limit()
                 try:
                     result = self.http_sender.send(record.payload)
                 except Exception as exc:  # noqa: BLE001 - transport isolation boundary
@@ -1048,11 +1055,12 @@ class DeliveryWorker:
                     )
                 state = repository.complete_attempt(record.record_id, result, attempted_at=started)
                 remaining.remove(record.record_id)
+                processed += 1
                 if state == "dead_letter":
                     self.logger.error("Telemetry record entered dead letter: %s", record.record_id)
         finally:
             repository.release_in_flight(remaining)
-        return len(records)
+        return processed
 
     def _wait_for_rate_limit(self) -> None:
         if self.rate_limit_per_second <= 0:
@@ -1061,7 +1069,7 @@ class DeliveryWorker:
         if self._last_send_started_at is not None:
             remaining = (1 / self.rate_limit_per_second) - (now - self._last_send_started_at)
             if remaining > 0:
-                time.sleep(remaining)
+                self._stop.wait(remaining)
         self._last_send_started_at = time.monotonic()
 
     def _run(self) -> None:
