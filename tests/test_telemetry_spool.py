@@ -679,7 +679,6 @@ def test_delivery_rate_limit_is_enforced_across_single_record_batches(tmp_path, 
         clock[0] += delay
 
     monkeypatch.setattr("src.telemetry_spool.time.monotonic", lambda: clock[0])
-    monkeypatch.setattr("src.telemetry_spool.time.sleep", sleep)
     worker = DeliveryWorker(
         spool,
         AcceptingSender(),
@@ -688,6 +687,7 @@ def test_delivery_rate_limit_is_enforced_across_single_record_batches(tmp_path, 
         rate_limit_per_second=2,
     )
 
+    monkeypatch.setattr(worker._stop, "wait", sleep)
     assert worker.deliver_once() == 1
     assert worker.deliver_once() == 1
     assert sleeps == [pytest.approx(0.5)]
@@ -714,3 +714,50 @@ class MappingSender:
 
     def send(self, payload):
         return DeliveryResult(self.results[payload["record_id"]], payload["record_id"])
+
+
+def test_shutdown_finishes_current_ack_and_releases_unsent_batch(tmp_path) -> None:
+    spool = repository(tmp_path)
+    records = [spool.enqueue(payload(f"2026-08-16T10:0{index}:00Z")) for index in range(3)]
+    sent = []
+
+    class StopAfterSend:
+        def send(self, item):
+            sent.append(item["record_id"])
+            worker.stop()
+            return DeliveryResult(DeliveryStatus.ACCEPTED, item["record_id"])
+
+    worker = DeliveryWorker(spool, StopAfterSend(), NullMqttSender(), batch_size=3)
+    try:
+        assert worker.deliver_once() == 1
+        assert len(sent) == 1
+        for record in records:
+            saved = spool.get(record.record_id)
+            assert saved.state == ("delivered" if record.record_id in sent else "pending")
+            assert saved.attempt_count == (1 if record.record_id in sent else 0)
+        assert worker.deliver_once() == 0
+        assert spool.health()["in_flight_count"] == 0
+    finally:
+        spool.close()
+
+
+def test_shutdown_interrupts_rate_limit_without_starting_attempt(tmp_path, monkeypatch) -> None:
+    spool = repository(tmp_path)
+    first = spool.enqueue(payload())
+    worker = DeliveryWorker(spool, AcceptingSender(), NullMqttSender(), batch_size=1)
+    assert worker.deliver_once() == 1
+    second = spool.enqueue(payload("2026-08-16T10:01:00Z"))
+
+    def stop_during_wait(_timeout):
+        worker.stop()
+        return True
+
+    monkeypatch.setattr(worker._stop, "wait", stop_during_wait)
+    monkeypatch.setattr("src.telemetry_spool.time.monotonic", lambda: worker._last_send_started_at)
+    try:
+        assert worker.deliver_once() == 0
+        assert spool.get(first.record_id).state == "delivered"
+        assert spool.get(second.record_id).state == "pending"
+        assert spool.get(second.record_id).attempt_count == 0
+    finally:
+        spool.close()

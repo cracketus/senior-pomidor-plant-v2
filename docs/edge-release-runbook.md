@@ -1,5 +1,9 @@
 # Edge release runbook
 
+This is the legacy source-built hardware procedure, not immutable RC qualification. For promotion,
+use [edge-image-release.md](edge-image-release.md). Check the actual Pi OS architecture: current RC
+images support amd64/arm64, not 32-bit arm/v7. A Pi model alone does not establish OS architecture.
+
 Release from a Windows laptop to a Raspberry Pi node at `~/apps/senior-pomidor-plant-v2`.
 
 ## Windows: merge, tag, release
@@ -24,7 +28,8 @@ gh workflow list
 gh run list --workflow "Edge release candidate" --branch main --limit 5
 ```
 
-If it is unavailable, skip artifact/promotion: the current hardware Compose file builds locally on the Pi.
+If it is unavailable, stop immutable promotion. A separately authorized local hardware build is a
+different candidate and needs its own compatibility and rollback evidence.
 
 ## Optional GHCR promotion
 
@@ -49,10 +54,32 @@ ssh <user>@<edge-host>
 cd ~/apps/senior-pomidor-plant-v2
 git status --short
 test -s .env
-grep -E '^(MQTT_HOST|CORE_HTTP_URL|WATCHDOG_SERVICE_NAME|MOCK_SENSORS)=' .env
 sudo cp .env ".env.backup-$(date +%Y%m%d-%H%M%S)"
-sudo tar -czf "../edge-data-backup-$(date +%Y%m%d-%H%M%S).tgz" data
+PREVIOUS_COMMIT="$(git rev-parse HEAD)"
+PREVIOUS_IMAGE_ID="$(docker inspect --format '{{.Image}}' senior-pomidor-edge)"
+PREVIOUS_IMAGE_REF="$(docker inspect --format '{{.Config.Image}}' senior-pomidor-edge)"
+ROLLBACK_IMAGE="senior-pomidor-edge:rollback-${PREVIOUS_COMMIT}"
+docker image tag "$PREVIOUS_IMAGE_ID" "$ROLLBACK_IMAGE"
 ```
+
+Record these identities privately before a build can replace the local image tag. Do not archive a
+live SQLite DB/WAL with `tar` and treat it as a consistent snapshot. Use the online backup API:
+
+```bash
+SPOOL_BACKUP="data/spool-backup-$(date -u +%Y%m%dT%H%M%SZ).sqlite3"
+docker compose exec -T senior-pomidor-edge python scripts/telemetry_spool.py online-backup "$SPOOL_BACKUP"
+python3 - "$SPOOL_BACKUP" <<'PY'
+import sqlite3
+import sys
+from pathlib import Path
+with sqlite3.connect(Path(sys.argv[1]).resolve().as_uri() + '?mode=ro', uri=True) as db:
+    assert db.execute('PRAGMA quick_check').fetchone()[0] == 'ok'
+PY
+```
+
+Copy the checked snapshot off-device to a private backup location. This spool snapshot is not a
+complete host backup. Preserve configuration privately; never restore over the active spool or
+discard pending records.
 
 `.env` is the single source for Compose, both systemd units, and watchdog. Keep `SERVICE_NAME` unset for Docker and set `WATCHDOG_SERVICE_NAME=senior-pomidor-edge.service`.
 
@@ -146,16 +173,28 @@ docker compose exec senior-pomidor-edge python scripts/maintenance_event.py comp
 test ! -e data/watchdog/maintenance.json && echo "maintenance hold cleared"
 ```
 
-Canonical Docker telemetry should have `service_manager=none`, `process_running=true`, no `systemd_*`, healthy watchdog, and aggregate `OK`. If Grafana shows `application/systemd=UNKNOWN` or `overall=UNKNOWN`, the remaining fix is in the server evaluator/dashboard: process-only application health must not become `UNKNOWN`.
+Canonical Docker telemetry should have `service_manager=none`, `process_running=true`, no `systemd_*`, healthy watchdog, and aggregate `OK`. If Grafana shows `UNKNOWN`, inspect the exact Core/Edge versions, discriminator and freshness. The Core evaluator fix already exists; do not infer a missing server patch from `UNKNOWN` alone.
 
 ## Rollback
 
 ```bash
 cd ~/apps/senior-pomidor-plant-v2
 docker compose exec senior-pomidor-edge python scripts/maintenance_event.py start --reason "Rollback"
-git checkout --detach <previous-release-tag-or-commit>
-docker compose build --pull senior-pomidor-edge
+git checkout --detach "$PREVIOUS_COMMIT"
+test "$(docker image inspect --format '{{.Id}}' "$ROLLBACK_IMAGE")" = "$PREVIOUS_IMAGE_ID"
+docker image tag "$ROLLBACK_IMAGE" "$PREVIOUS_IMAGE_REF"
 sudo systemctl restart senior-pomidor-edge.service
 sudo systemctl restart senior-pomidor-watchdog.service
+docker compose ps
+docker compose exec -T senior-pomidor-edge python scripts/telemetry_spool.py status
+```
+
+Verify fresh acquisition, health and queue progress as above before clearing the hold:
+
+```bash
 docker compose exec senior-pomidor-edge python scripts/maintenance_event.py complete --reason "Rollback completed"
 ```
+
+Do not rebuild rollback. Confirm the saved image reference matches the restored Compose configuration;
+otherwise stop and prepare a reviewed override. Keep the spool/data intact and verify in rehearsal that
+the previous code supports the current spool schema. Physical sensors, camera and reboot need manual evidence.
