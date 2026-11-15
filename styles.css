@@ -69,6 +69,36 @@ h1 {
   font-family: 'Courier New', Courier, monospace;
 }
 
+.season-status {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 42rem;
+  padding: 1.25rem;
+  border: 1px solid rgba(50, 107, 74, 0.28);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.86);
+}
+
+.season-status-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.season-status h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.season-status p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
 .links {
   display: grid;
   gap: 0.75rem;
