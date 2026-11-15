@@ -3,12 +3,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_public_page_links_to_live_dashboard() -> None:
+def test_public_page_does_not_link_to_grafana() -> None:
     index = (ROOT / "index.html").read_text(encoding="utf-8")
 
-    assert "Live Dashboard" in index
-    assert "Grafana Cloud" in index
-    assert "https://stoutibex436.grafana.net/public-dashboards/913e33e032334becb3b01504373a364d" in index
+    assert "grafana.net" not in index
     assert "container" not in index.lower()
 
 
